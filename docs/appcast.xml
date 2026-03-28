@@ -6,13 +6,13 @@
     <language>en</language>
     <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery</link>
     <item>
-      <title>Version 1.0.0</title>
-      <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.0.md</link>
-      <sparkle:version>1</sparkle:version>
-      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
-      <sparkle:releaseNotesLink>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.0.md</sparkle:releaseNotesLink>
-      <pubDate>Sat, 28 Mar 2026 11:35:43 +0000</pubDate>
-      <enclosure url="https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/v1.0.0/LofreeDongleBattery.dmg" length="2867349" type="application/octet-stream" sparkle:edSignature="MkFP3KS6kYBioO5XVky2x9WrsyDdFqvpSD+U+cZDSG0962qZIAHB9H5+Hk+ORwhez5gWbysB+rfxS1vKnNY9Dg==" />
+      <title>Version 1.0.1</title>
+      <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.1.md</link>
+      <sparkle:version>2</sparkle:version>
+      <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.1.md</sparkle:releaseNotesLink>
+      <pubDate>Sat, 28 Mar 2026 12:40:40 +0000</pubDate>
+      <enclosure url="https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/v1.0.1/LofreeDongleBattery.dmg" length="2865461" type="application/octet-stream" sparkle:edSignature="a5mtLP67nsfbTKTZL8QBIMk0GF1kQZ7cq86Kxpbn+FT+wt42qGq5vHYhtqU4ioko79X5U2Vr7NKinQkZYbF3AQ==" />
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
     </item>
   </channel>
