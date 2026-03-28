@@ -19,6 +19,7 @@ For normal users, that is the cleanest and most trusted distribution path.
 Once the repository is public, the release page should expose:
 
 - `LofreeDongleBattery.dmg`
+- `LofreeDongleBattery-<version>.dmg`
 
 Placeholder release URL:
 
@@ -49,6 +50,7 @@ CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./scripts/build
 Output:
 
 - `dist/LofreeDongleBattery.dmg`
+- `dist/LofreeDongleBattery-<version>.dmg`
 
 ## Sparkle setup
 
@@ -93,6 +95,7 @@ Then run:
 ```
 
 That script submits `dist/LofreeDongleBattery.dmg` and staples the notarization ticket when it completes.
+It also refreshes the versioned copy so the public release asset matches the final notarized DMG exactly.
 
 ## Generate the appcast entry
 
@@ -131,3 +134,13 @@ This repository is prepared for Sparkle-based in-app updates using:
 - EdDSA signatures managed by Sparkle
 
 The app is configured for manual update checks only, so users will only see update prompts after clicking `Check for Updates…`.
+
+## DMG naming
+
+For release clarity, the scripts generate both:
+
+- `LofreeDongleBattery.dmg`
+- `LofreeDongleBattery-<version>.dmg`
+
+Use the stable filename for Sparkle and convenience links.
+Use the versioned filename as the human-facing asset in GitHub Releases.

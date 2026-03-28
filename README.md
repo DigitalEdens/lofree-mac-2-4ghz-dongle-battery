@@ -59,7 +59,7 @@ Read the full explanation here:
 
 ### When public releases are available
 
-1. Download `LofreeDongleBattery.dmg` from GitHub Releases.
+1. Download the versioned DMG from GitHub Releases, for example `LofreeDongleBattery-1.0.3.dmg`.
 2. Open the DMG.
 3. Drag `LofreeDongleBattery.app` into `Applications`.
 4. Open the app from `Applications`.
@@ -130,6 +130,11 @@ Official updates are intended to be delivered through:
 - a GitHub-hosted appcast feed for Sparkle
 
 This app is configured for manual update checks only. It will only look for updates when you click `Check for Updates…` in the menu.
+
+GitHub Releases may include both:
+
+- a stable updater file named `LofreeDongleBattery.dmg`
+- a versioned public download file like `LofreeDongleBattery-1.0.3.dmg`
 
 ## Support
 
