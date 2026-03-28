@@ -1,0 +1,25 @@
+.DS_Store
+*.swp
+*.swo
+
+dist/
+build/
+*.app
+*.dmg
+*.zip
+
+analysis/
+archive/
+
+.swiftpm/
+.build/
+
+Vendor/Sparkle.framework/
+Vendor/Sparkle Test App.app/
+Vendor/Symbols/
+Vendor/bin/
+Vendor/*.tar.xz
+Vendor/CHANGELOG
+Vendor/INSTALL
+Vendor/LICENSE
+Vendor/SampleAppcast.xml
