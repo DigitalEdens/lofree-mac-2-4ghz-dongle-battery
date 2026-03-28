@@ -134,7 +134,7 @@ This app is configured for manual update checks only. It will only look for upda
 Future Plans:
 
 - Bluetooth switch detection and showing battery
-- You can request features here on the reddit thread https://www.reddit.com/r/Lofree/comments/1s4e05k/comment/ocx7e8i/?context=1
+- You can request features here on the reddit thread https://www.reddit.com/r/Lofree/comments/1s4e05k/
 
 ## Support
 
