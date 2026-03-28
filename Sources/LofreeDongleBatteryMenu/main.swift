@@ -338,7 +338,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func checkForUpdates() {
+        clearUpdateFeedCache()
         updaterController.checkForUpdates(self)
+    }
+
+    private func clearUpdateFeedCache() {
+        guard let feedURLString = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+              let feedURL = URL(string: feedURLString) else {
+            URLCache.shared.removeAllCachedResponses()
+            return
+        }
+
+        URLCache.shared.removeCachedResponse(for: URLRequest(url: feedURL))
+        URLCache.shared.removeAllCachedResponses()
     }
 
     @objc private func openInputMonitoringFromMenu() {
