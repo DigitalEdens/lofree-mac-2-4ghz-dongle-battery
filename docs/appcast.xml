@@ -11,8 +11,8 @@
       <description><![CDATA[<h2>Lofree Dongle Battery 1.0.3</h2><ul><li>Clears the cached Sparkle update feed before each manual `Check for Updates…` run</li><li>Fixes update installs getting stuck on stale appcast metadata</li><li>Keeps the same manual-only update flow and live 2.4 GHz battery reading</li></ul>]]></description>
       <sparkle:version>4</sparkle:version>
       <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
-      <pubDate>Sat, 28 Mar 2026 13:02:13 +0000</pubDate>
-      <enclosure url="https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/v1.0.3/LofreeDongleBattery.dmg" length="2865348" type="application/octet-stream" sparkle:edSignature="f+xh54dzbrDMbjLq4I8PVSyYImYDb+gg35aeZ/WQvlm+MVnS2BQh/B1B/tqXcyl9dktf/PAoRd7yRFnMDGC1Ag==" />
+      <pubDate>Sat, 28 Mar 2026 18:23:18 +0000</pubDate>
+      <enclosure url="https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/v1.0.3/LofreeDongleBattery-1.0.3.dmg" length="2865348" type="application/octet-stream" sparkle:edSignature="f+xh54dzbrDMbjLq4I8PVSyYImYDb+gg35aeZ/WQvlm+MVnS2BQh/B1B/tqXcyl9dktf/PAoRd7yRFnMDGC1Ag==" />
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
     </item>
   </channel>

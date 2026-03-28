@@ -18,7 +18,6 @@ For normal users, that is the cleanest and most trusted distribution path.
 
 Once the repository is public, the release page should expose:
 
-- `LofreeDongleBattery.dmg`
 - `LofreeDongleBattery-<version>.dmg`
 
 Placeholder release URL:
@@ -49,7 +48,6 @@ CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./scripts/build
 
 Output:
 
-- `dist/LofreeDongleBattery.dmg`
 - `dist/LofreeDongleBattery-<version>.dmg`
 
 ## Sparkle setup
@@ -94,8 +92,7 @@ Then run:
 ./scripts/notarize_dmg.sh
 ```
 
-That script submits `dist/LofreeDongleBattery.dmg` and staples the notarization ticket when it completes.
-It also refreshes the versioned copy so the public release asset matches the final notarized DMG exactly.
+That script submits the versioned DMG in `dist/` and staples the notarization ticket when it completes.
 
 ## Generate the appcast entry
 
@@ -112,7 +109,7 @@ That script updates:
 
 Use the same GitHub release tag in the command that you plan to publish, because the appcast points to:
 
-`https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/<tag>/LofreeDongleBattery.dmg`
+`https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/<tag>/LofreeDongleBattery-<version>.dmg`
 
 ## Public repo hygiene
 
@@ -137,10 +134,8 @@ The app is configured for manual update checks only, so users will only see upda
 
 ## DMG naming
 
-For release clarity, the scripts generate both:
+For release clarity and simpler publishing, the scripts generate only:
 
-- `LofreeDongleBattery.dmg`
 - `LofreeDongleBattery-<version>.dmg`
 
-Use the stable filename for Sparkle and convenience links.
-Use the versioned filename as the human-facing asset in GitHub Releases.
+That same versioned file is used both for GitHub Releases and for Sparkle updates.

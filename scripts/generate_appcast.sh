@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_PLIST="$ROOT_DIR/App/Info.plist"
-DMG_PATH="$ROOT_DIR/dist/LofreeDongleBattery.dmg"
 APPCAST_PATH="$ROOT_DIR/docs/appcast.xml"
 RELEASE_NOTES_DIR="$ROOT_DIR/docs/release-notes"
 SPARKLE_BIN="$ROOT_DIR/Vendor/bin/sign_update"
@@ -18,18 +17,21 @@ RELEASE_TAG="$1"
 
 "$ROOT_DIR/scripts/setup_sparkle.sh"
 
+SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PLIST")"
+DMG_NAME="LofreeDongleBattery-${SHORT_VERSION}.dmg"
+DMG_PATH="$ROOT_DIR/dist/$DMG_NAME"
+
 if [[ ! -f "$DMG_PATH" ]]; then
   echo "Missing DMG: $DMG_PATH" >&2
   exit 1
 fi
 
-SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PLIST")"
 BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PLIST")"
 MIN_SYSTEM_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_PLIST")"
 PUB_DATE="$(LC_ALL=en_US.UTF-8 date -Ru)"
 DMG_LENGTH="$(stat -f%z "$DMG_PATH")"
 DMG_SIGNATURE="$("$SPARKLE_BIN" -p "$DMG_PATH" | tr -d '\n')"
-DOWNLOAD_URL="https://github.com/${REPO_SLUG}/releases/download/${RELEASE_TAG}/LofreeDongleBattery.dmg"
+DOWNLOAD_URL="https://github.com/${REPO_SLUG}/releases/download/${RELEASE_TAG}/${DMG_NAME}"
 PROJECT_LINK="https://github.com/${REPO_SLUG}"
 VERSION_HISTORY_URL="https://github.com/${REPO_SLUG}/blob/main/docs/release-notes/${SHORT_VERSION}.md"
 

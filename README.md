@@ -18,11 +18,9 @@ It does not need the keyboard to be connected over Bluetooth.
 
 ## Download
 
-[Download the latest DMG](https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/latest/download/LofreeDongleBattery.dmg)
+[Download the latest release](https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/latest)
 
-That direct download link will start working as soon as the first GitHub Release is published with `LofreeDongleBattery.dmg` attached.
-
-Until the first release is published, build instructions are below.
+Download the versioned DMG from the latest GitHub release, for example `LofreeDongleBattery-1.0.3.dmg`.
 
 ## What the app shows
 
@@ -89,7 +87,7 @@ To create the release DMG:
 
 That produces:
 
-- `dist/LofreeDongleBattery.dmg`
+- `dist/LofreeDongleBattery-<version>.dmg`
 
 ## How it works
 
@@ -126,16 +124,15 @@ The app is set up to use Sparkle for official in-app updates.
 
 Official updates are intended to be delivered through:
 
-- GitHub Releases for the signed and notarized DMG files
+- GitHub Releases for the signed and notarized versioned DMG files
 - a GitHub-hosted appcast feed for Sparkle
 
 This app is configured for manual update checks only. It will only look for updates when you click `Check for Updates…` in the menu.
 
-Future Plans:
+## Future plans
 
 - Bluetooth switch detection and showing battery
-- You can request features here on the reddit thread https://www.reddit.com/r/Lofree/comments/1s4e05k/
-
+- You can request features here on the Reddit thread https://www.reddit.com/r/Lofree/comments/1s4e05k/
 ## Support
 
 - [Buy me a coffee](https://digitaledens.com/buy-me-a-coffee/)

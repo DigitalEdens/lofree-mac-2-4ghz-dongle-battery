@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 APP_PLIST="$ROOT_DIR/App/Info.plist"
-DMG_PATH="${1:-$DIST_DIR/LofreeDongleBattery.dmg}"
 SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PLIST")"
 VERSIONED_DMG_PATH="$DIST_DIR/LofreeDongleBattery-${SHORT_VERSION}.dmg"
+DMG_PATH="${1:-$VERSIONED_DMG_PATH}"
 KEYCHAIN_PROFILE="${NOTARY_PROFILE:-lofree-notary}"
 
 if [[ ! -f "$DMG_PATH" ]]; then
@@ -21,7 +21,4 @@ xcrun notarytool submit "$DMG_PATH" \
 
 xcrun stapler staple "$DMG_PATH"
 
-cp "$DMG_PATH" "$VERSIONED_DMG_PATH"
-
 echo "Notarized and stapled: $DMG_PATH"
-echo "Updated versioned copy: $VERSIONED_DMG_PATH"
