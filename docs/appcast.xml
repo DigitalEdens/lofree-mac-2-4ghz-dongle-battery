@@ -6,13 +6,13 @@
     <language>en</language>
     <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery</link>
     <item>
-      <title>Version 1.0.1</title>
-      <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.1.md</link>
-      <description><![CDATA[<h2>Lofree Dongle Battery 1.0.1</h2><ul><li>Updates the public release so it matches the final menu layout and update menu ordering.</li><li>Keeps the same live 2.4 GHz battery monitoring behavior for the tested Flow Lite100 setup.</li><li>Keeps manual in-app update checks through the official GitHub-hosted Sparkle feed.</li></ul>]]></description>
-      <sparkle:version>2</sparkle:version>
-      <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
-      <pubDate>Sat, 28 Mar 2026 12:47:56 +0000</pubDate>
-      <enclosure url="https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/v1.0.1/LofreeDongleBattery.dmg" length="2867382" type="application/octet-stream" sparkle:edSignature="LAmINRUNyGb6Y29bjG3g+4MDQ7wY9eBQXCAfopbuDKNJ0YTis/ruXw8wg2VI9BC6AWslx24S2rr8ODmPoPcaBA==" />
+      <title>Version 1.0.2</title>
+      <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.2.md</link>
+      <description><![CDATA[<h2>Lofree Dongle Battery 1.0.2</h2><ul><li>Rolls up the public release fixes into one clean update.</li><li>Fixes the published build so the app menu matches the intended public layout.</li><li>Fixes Sparkle release notes rendering so the update window shows readable notes instead of page HTML.</li><li>Fixes Sparkle update validation by publishing appcast metadata that matches the uploaded DMG exactly.</li></ul>]]></description>
+      <sparkle:version>3</sparkle:version>
+      <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+      <pubDate>Sat, 28 Mar 2026 12:50:50 +0000</pubDate>
+      <enclosure url="https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/v1.0.2/LofreeDongleBattery.dmg" length="2865468" type="application/octet-stream" sparkle:edSignature="B8gHaJ+AZt2UYjmqqSj+/l36H2Jw0iVKq4ifSEEDxAovLXRFYrW48E9GWDxmjyLTJ3UTRm6ipNgpg7GgkDOXBQ==" />
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
     </item>
   </channel>
