@@ -45,6 +45,44 @@ if [[ ! -f "$RELEASE_NOTES_DIR/${SHORT_VERSION}.md" ]]; then
 EOF
 fi
 
+RELEASE_NOTES_HTML="$(python3 - "$RELEASE_NOTES_DIR/${SHORT_VERSION}.md" <<'PY'
+import html
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+
+title = ""
+bullets = []
+paragraphs = []
+
+for raw in lines:
+    line = raw.strip()
+    if not line:
+        continue
+    if line.startswith("# "):
+        title = html.escape(line[2:])
+    elif line.startswith("- "):
+        bullets.append(html.escape(line[2:]))
+    else:
+        paragraphs.append(html.escape(line))
+
+parts = []
+if title:
+    parts.append(f"<h2>{title}</h2>")
+for paragraph in paragraphs:
+    parts.append(f"<p>{paragraph}</p>")
+if bullets:
+    parts.append("<ul>")
+    for bullet in bullets:
+        parts.append(f"<li>{bullet}</li>")
+    parts.append("</ul>")
+
+print("".join(parts))
+PY
+)"
+
 cat > "$APPCAST_PATH" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -56,9 +94,9 @@ cat > "$APPCAST_PATH" <<EOF
     <item>
       <title>Version ${SHORT_VERSION}</title>
       <link>${VERSION_HISTORY_URL}</link>
+      <description><![CDATA[${RELEASE_NOTES_HTML}]]></description>
       <sparkle:version>${BUNDLE_VERSION}</sparkle:version>
       <sparkle:shortVersionString>${SHORT_VERSION}</sparkle:shortVersionString>
-      <sparkle:releaseNotesLink>${VERSION_HISTORY_URL}</sparkle:releaseNotesLink>
       <pubDate>${PUB_DATE}</pubDate>
       <enclosure url="${DOWNLOAD_URL}" length="${DMG_LENGTH}" type="application/octet-stream" sparkle:edSignature="${DMG_SIGNATURE}" />
       <sparkle:minimumSystemVersion>${MIN_SYSTEM_VERSION}</sparkle:minimumSystemVersion>

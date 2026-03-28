@@ -8,9 +8,9 @@
     <item>
       <title>Version 1.0.1</title>
       <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.1.md</link>
+      <description><![CDATA[<h2>Lofree Dongle Battery 1.0.1</h2><ul><li>Updates the public release so it matches the final menu layout and update menu ordering.</li><li>Keeps the same live 2.4 GHz battery monitoring behavior for the tested Flow Lite100 setup.</li><li>Keeps manual in-app update checks through the official GitHub-hosted Sparkle feed.</li></ul>]]></description>
       <sparkle:version>2</sparkle:version>
       <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
-      <sparkle:releaseNotesLink>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.1.md</sparkle:releaseNotesLink>
       <pubDate>Sat, 28 Mar 2026 12:40:40 +0000</pubDate>
       <enclosure url="https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/v1.0.1/LofreeDongleBattery.dmg" length="2865461" type="application/octet-stream" sparkle:edSignature="a5mtLP67nsfbTKTZL8QBIMk0GF1kQZ7cq86Kxpbn+FT+wt42qGq5vHYhtqU4ioko79X5U2Vr7NKinQkZYbF3AQ==" />
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
