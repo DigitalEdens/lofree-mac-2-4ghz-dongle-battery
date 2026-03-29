@@ -3,6 +3,7 @@
 *.swo
 
 dist/
+dist-dev/
 build/
 *.app
 *.dmg
@@ -10,6 +11,8 @@ build/
 
 analysis/
 archive/
+docs/dev-appcast.xml
+docs/dev-release-notes/
 
 .swiftpm/
 .build/
