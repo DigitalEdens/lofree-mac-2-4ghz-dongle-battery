@@ -13,6 +13,20 @@ struct BatteryReading {
     let updatedAt: Date
 }
 
+private func dongleHelperDisplayName() -> String {
+    let helperAppURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/Lofree Dongle Battery Access.app")
+    guard let helperBundle = Bundle(url: helperAppURL) else {
+        return "Lofree Dongle Battery Access"
+    }
+
+    if let displayName = helperBundle.object(forInfoDictionaryKey: "CFBundleName") as? String,
+       !displayName.isEmpty {
+        return displayName
+    }
+
+    return "Lofree Dongle Battery Access"
+}
+
 final class DongleBatteryMonitor {
     private enum Timing {
         static let retryDelaySeconds: TimeInterval = 3
@@ -413,6 +427,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let dongleMonitor = DongleBatteryMonitor()
     private let bluetoothMonitor = BluetoothBatteryMonitor()
     private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    private let helperDisplayName = dongleHelperDisplayName()
 
     private var dongleReading: BatteryReading?
     private var bluetoothReading: BatteryReading?
@@ -547,7 +562,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.addItem(withTitle: "Connection: \(reading.connectionText)", action: nil, keyEquivalent: "")
         if reading.requiresInputMonitoring {
-            menu.addItem(withTitle: "Enable: Lofree Dongle Battery Access", action: nil, keyEquivalent: "")
+            menu.addItem(withTitle: "Enable: \(helperDisplayName)", action: nil, keyEquivalent: "")
+            let settingsItem = NSMenuItem(title: "Open Input Monitoring Settings", action: #selector(openInputMonitoringFromMenu), keyEquivalent: "")
+            settingsItem.target = self
+            if let image = NSImage(systemSymbolName: "hand.raised", accessibilityDescription: "Open Input Monitoring Settings") {
+                image.isTemplate = true
+                settingsItem.image = image
+            }
+            menu.addItem(settingsItem)
         }
         menu.addItem(.separator())
 
@@ -567,16 +589,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.addItem(updatesItem)
         menu.addItem(.separator())
-
-        if reading.requiresInputMonitoring {
-            let settingsItem = NSMenuItem(title: "Open Input Monitoring Settings", action: #selector(openInputMonitoringFromMenu), keyEquivalent: "")
-            settingsItem.target = self
-            if let image = NSImage(systemSymbolName: "hand.raised", accessibilityDescription: "Open Input Monitoring Settings") {
-                image.isTemplate = true
-                settingsItem.image = image
-            }
-            menu.addItem(settingsItem)
-        }
 
         let supportItem = NSMenuItem(title: Support.menuTitle, action: #selector(openSupportLink), keyEquivalent: "")
         supportItem.target = self
@@ -617,7 +629,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             To read the keyboard battery over 2.4 GHz, enable Input Monitoring for:
 
-            Lofree Dongle Battery Access
+            \(self.helperDisplayName)
             """
             alert.addButton(withTitle: "Open Settings")
             alert.addButton(withTitle: "Later")
