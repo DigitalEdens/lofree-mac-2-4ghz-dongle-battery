@@ -2,26 +2,24 @@
 
 ## Why macOS asks for Input Monitoring
 
-This app includes a bundled helper named `Lofree Dongle Battery Access`.
+This app talks directly to the Lofree `2.4 GHz` USB receiver using low-level HID access. On macOS, keyboard-like HID access is protected by **Input Monitoring**, even when an app is not trying to read what you type.
 
-That helper talks directly to the Lofree `2.4 GHz` USB receiver using low-level HID access. On macOS, keyboard-like HID access is protected by **Input Monitoring**, even when an app is not trying to read what you type.
-
-Because the Lofree receiver appears in that protected class, macOS requires Input Monitoring before the helper can open the device.
+Because the Lofree receiver appears in that protected class, macOS requires Input Monitoring before the app can open the device.
 
 Without this permission, the app cannot talk to the receiver and the battery percentage will not appear.
 
 ## Why it is safe in this app
 
-The permission is needed only so the helper can talk to the receiver and ask for battery information.
+The permission is needed only so the app can talk to the receiver and ask for battery information over `2.4 GHz`.
 
 This app does not use Input Monitoring to inspect what you type, and it does not send your keyboard data anywhere.
 
 ## What the permission is used for
 
-The helper uses Input Monitoring only to:
+The app uses Input Monitoring only to:
 
 - open the Lofree receiver
-- send the battery request
+- send the battery request over `2.4 GHz`
 - receive the battery response
 
 ## What the app does not do
@@ -47,22 +45,22 @@ The app displays device-reported battery information:
 
 - battery percentage
 - charging status
-- voltage
+- voltage on `2.4 GHz`
+- Bluetooth battery percentage when the keyboard is already connected over Bluetooth
 
 ## First run behavior
 
 On first launch, it can take up to about a minute for the first live battery percentage to appear.
 
-That delay is expected while macOS finishes the permission flow, the helper opens the receiver, and the first battery reply comes back from the dongle.
+That delay is expected while macOS finishes the permission flow, the app opens the receiver, and the first battery reply comes back from the dongle.
 
 ## Why the source code is public
 
 The source is public so anyone can inspect how the permission is used.
 
-The main runtime files are:
+The main runtime file is:
 
 - `Sources/LofreeDongleBatteryMenu/main.swift`
-- `Sources/LofreeDongleBattery/main.swift`
 
 ## Your control
 

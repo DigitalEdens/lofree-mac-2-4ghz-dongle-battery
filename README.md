@@ -1,6 +1,6 @@
 # Lofree 2.4 GHz Dongle Battery
 
-A small macOS menu bar app that shows the live battery percentage of a Lofree keyboard while it is connected through the official `2.4 GHz` USB receiver.
+A small macOS menu bar app that shows the live battery percentage of a compatible Lofree keyboard over the official `2.4 GHz` USB receiver or over Bluetooth.
 
 ## Unofficial project
 
@@ -12,21 +12,22 @@ It is not affiliated with, endorsed by, or published by Lofree.
 
 ## In plain English
 
-This app talks to the Lofree USB dongle, asks the keyboard for its battery status, and shows that live percentage in the macOS menu bar.
-
-It does not need the keyboard to be connected over Bluetooth.
+This app talks to the Lofree USB dongle when you are using `2.4 GHz`, or reads the standard battery service when the keyboard is already connected over Bluetooth, and shows that battery information in the macOS menu bar.
 
 ## Download
 
 [Download the latest release](https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/latest)
 
-Download the versioned DMG from the latest GitHub release, for example `LofreeDongleBattery-1.0.3.dmg`.
+Download the versioned DMG from the latest GitHub release, for example `LofreeDongleBattery-1.0.4.dmg`.
 
 ## What the app shows
 
 - live battery percentage
 - charging state
-- battery voltage reported by the device
+- battery voltage reported by the device on `2.4 GHz`
+- current connection type
+- last updated time
+- a manual check mode for `Auto`, `Bluetooth only`, or `2.4 GHz only`
 
 ## Tested keyboards
 
@@ -44,7 +45,7 @@ macOS protects low-level access to keyboard-like HID devices behind **Input Moni
 
 This app needs that permission because the Lofree receiver presents itself in a protected HID class. Without it, the app cannot talk to the dongle and the live battery percentage will not appear.
 
-The permission is used only so the bundled helper can ask the dongle for battery data.
+The permission is used only so the app can ask the dongle for battery data over `2.4 GHz`.
 
 It does **not** capture typed text, record keystrokes, or send your keyboard activity anywhere.
 
@@ -57,11 +58,11 @@ Read the full explanation here:
 
 ### When public releases are available
 
-1. Download the versioned DMG from GitHub Releases, for example `LofreeDongleBattery-1.0.3.dmg`.
+1. Download the versioned DMG from GitHub Releases, for example `LofreeDongleBattery-1.0.4.dmg`.
 2. Open the DMG.
 3. Drag `LofreeDongleBattery.app` into `Applications`.
 4. Open the app from `Applications`.
-5. When macOS requests Input Monitoring access, enable `Lofree Dongle Battery Access`.
+5. When macOS requests Input Monitoring access, enable `LofreeDongleBattery.app`.
 
 ## First run note
 
@@ -91,14 +92,10 @@ That produces:
 
 ## How it works
 
-The app has two parts:
+The app checks battery data in two ways:
 
-1. `LofreeDongleBattery.app`
-   This is the menu bar app you run.
-2. `Lofree Dongle Battery Access`
-   This is the bundled background helper that talks to the USB receiver.
-
-The helper opens the Lofree dongle over HID, sends the battery request, reads the reply, and returns the live battery data to the menu bar app.
+1. Over `2.4 GHz`, it opens the Lofree dongle over HID and requests a fresh battery reading directly.
+2. Over Bluetooth, it reads the keyboard's standard Bluetooth battery service if the keyboard is already connected to the Mac.
 
 ## Trust and transparency
 
@@ -131,7 +128,8 @@ This app is configured for manual update checks only. It will only look for upda
 
 ## Future plans
 
-- Bluetooth switch detection and showing battery
+- broader Lofree keyboard compatibility testing
+- smoother Bluetooth and `2.4 GHz` handoff behavior
 - You can request features here on the Reddit thread https://www.reddit.com/r/Lofree/comments/1s4e05k/
 ## Support
 
