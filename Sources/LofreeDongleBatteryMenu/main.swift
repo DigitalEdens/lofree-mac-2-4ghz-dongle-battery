@@ -480,15 +480,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return dongleReading
         }
 
-        if let bluetoothReading, isActiveBluetooth(bluetoothReading) {
-            return bluetoothReading
-        }
-
-        if let dongleReading, isPendingDongle(dongleReading), bluetoothReading?.percent == nil {
+        if let dongleReading, readingPrefersDongle(dongleReading) {
             return dongleReading
         }
 
-        if let bluetoothReading {
+        if let bluetoothReading, isActiveBluetooth(bluetoothReading) {
             return bluetoothReading
         }
 
@@ -506,7 +502,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func isPendingDongle(_ reading: BatteryReading) -> Bool {
         switch reading.stateText {
-        case "Reading 2.4 GHz battery…", "Refreshing 2.4 GHz battery…":
+        case "Reading 2.4 GHz battery…", "Refreshing 2.4 GHz battery…", "2.4 GHz retrying…", "2.4 GHz reconnecting…", "Allow Input Monitoring":
             return true
         default:
             return false
@@ -515,11 +511,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func isActiveBluetooth(_ reading: BatteryReading) -> Bool {
         switch reading.stateText {
-        case "Bluetooth connected", "Refreshing Bluetooth battery…":
+        case "Bluetooth connected":
             return reading.percent != nil
+        case "Refreshing Bluetooth battery…", "Reading Bluetooth battery…":
+            return true
         default:
             return false
         }
+    }
+
+    private func readingPrefersDongle(_ reading: BatteryReading) -> Bool {
+        isPendingDongle(reading) || reading.stateText == "2.4 GHz receiver not found"
     }
 
     private func configureStatusButton() {
@@ -563,14 +565,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Connection: \(reading.connectionText)", action: nil, keyEquivalent: "")
         if reading.requiresInputMonitoring {
             menu.addItem(withTitle: "Enable: \(helperDisplayName)", action: nil, keyEquivalent: "")
-            let settingsItem = NSMenuItem(title: "Open Input Monitoring Settings", action: #selector(openInputMonitoringFromMenu), keyEquivalent: "")
-            settingsItem.target = self
-            if let image = NSImage(systemSymbolName: "hand.raised", accessibilityDescription: "Open Input Monitoring Settings") {
-                image.isTemplate = true
-                settingsItem.image = image
-            }
-            menu.addItem(settingsItem)
         }
+        let settingsItem = NSMenuItem(title: "Open Input Monitoring Settings", action: #selector(openInputMonitoringFromMenu), keyEquivalent: "")
+        settingsItem.target = self
+        if let image = NSImage(systemSymbolName: "hand.raised", accessibilityDescription: "Open Input Monitoring Settings") {
+            image.isTemplate = true
+            settingsItem.image = image
+        }
+        menu.addItem(settingsItem)
         menu.addItem(.separator())
 
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshNow), keyEquivalent: "r")
