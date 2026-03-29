@@ -23,6 +23,39 @@ private func appDisplayName() -> String {
     return "LofreeDongleBatteryDev"
 }
 
+private func relativeUpdateText(since date: Date) -> String {
+    let seconds = max(0, Int(Date().timeIntervalSince(date)))
+    if seconds < 5 {
+        return "just now"
+    }
+    if seconds < 60 {
+        return "\(seconds)s ago"
+    }
+    let minutes = seconds / 60
+    if minutes < 60 {
+        return "\(minutes)m ago"
+    }
+    let hours = minutes / 60
+    return "\(hours)h ago"
+}
+
+private enum ConnectionMode: String {
+    case auto
+    case bluetoothOnly
+    case dongleOnly
+
+    var menuTitle: String {
+        switch self {
+        case .auto:
+            return "Auto check"
+        case .bluetoothOnly:
+            return "Check Bluetooth only"
+        case .dongleOnly:
+            return "Check 2.4 GHz only"
+        }
+    }
+}
+
 final class DongleBatteryMonitor {
     private enum Timing {
         static let retryDelaySeconds: TimeInterval = 3
@@ -55,7 +88,7 @@ final class DongleBatteryMonitor {
                 percent: lastSuccessfulReading.percent,
                 charging: lastSuccessfulReading.charging,
                 voltage: lastSuccessfulReading.voltage,
-                stateText: "Refreshing 2.4 GHz battery…",
+                stateText: "Requesting fresh battery data…",
                 connectionText: "2.4 GHz",
                 requiresInputMonitoring: false,
                 updatedAt: Date()
@@ -65,7 +98,7 @@ final class DongleBatteryMonitor {
                 percent: nil,
                 charging: false,
                 voltage: nil,
-                stateText: "Reading 2.4 GHz battery…",
+                stateText: "Requesting battery data…",
                 connectionText: "2.4 GHz",
                 requiresInputMonitoring: false,
                 updatedAt: Date()
@@ -397,7 +430,7 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
                     percent: lastSuccessfulReading.percent,
                     charging: false,
                     voltage: nil,
-                    stateText: "Refreshing Bluetooth battery…",
+                    stateText: "Requesting fresh battery data…",
                     connectionText: "Bluetooth",
                     requiresInputMonitoring: false,
                     updatedAt: Date()
@@ -407,7 +440,7 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
                     percent: nil,
                     charging: false,
                     voltage: nil,
-                    stateText: "Reading Bluetooth battery…",
+                    stateText: "Requesting battery data…",
                     connectionText: "Bluetooth",
                     requiresInputMonitoring: false,
                     updatedAt: Date()
@@ -423,6 +456,15 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
     private func discoverKeyboard(using centralManager: CBCentralManager) {
         let connected = centralManager.retrieveConnectedPeripherals(withServices: [batteryServiceUUID])
         if let matched = connected.first(where: isLikelyLofreePeripheral) ?? connected.first {
+            publish(BatteryReading(
+                percent: lastSuccessfulReading?.percent,
+                charging: false,
+                voltage: nil,
+                stateText: lastSuccessfulReading == nil ? "Requesting battery data…" : "Requesting fresh battery data…",
+                connectionText: "Bluetooth",
+                requiresInputMonitoring: false,
+                updatedAt: Date()
+            ))
             adopt(peripheral: matched, using: centralManager)
             return
         }
@@ -555,6 +597,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         static let url = "https://digitaledens.com/buy-me-a-coffee/"
     }
 
+    private enum DefaultsKey {
+        static let connectionMode = "ConnectionMode"
+    }
+
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let dongleMonitor = DongleBatteryMonitor()
     private let bluetoothMonitor = BluetoothBatteryMonitor()
@@ -574,6 +620,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private var timer: Timer?
     private var hasShownPermissionAlert = false
+    private var connectionMode: ConnectionMode = {
+        guard let rawValue = UserDefaults.standard.string(forKey: DefaultsKey.connectionMode),
+              let mode = ConnectionMode(rawValue: rawValue) else {
+            return .auto
+        }
+        return mode
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -594,8 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dongleMonitor.refresh()
 
         timer = Timer.scheduledTimer(withTimeInterval: Timing.steadyRefreshInterval, repeats: true) { [weak self] _ in
-            self?.bluetoothMonitor.refresh()
-            self?.dongleMonitor.refresh()
+            self?.refreshForCurrentMode()
         }
     }
 
@@ -608,24 +660,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func selectReading() -> BatteryReading? {
-        if let dongleReading, isActiveDongle(dongleReading) {
+        switch connectionMode {
+        case .bluetoothOnly:
+            return selectBluetoothReading()
+        case .dongleOnly:
+            return selectDongleReading()
+        case .auto:
+            break
+        }
+
+        if let dongleReading = selectDongleReading(activeOnly: true) {
             return dongleReading
         }
 
-        if let dongleReading, readingPrefersDongle(dongleReading) {
-            return dongleReading
-        }
-
-        if let bluetoothReading, isActiveBluetooth(bluetoothReading) {
+        if let bluetoothReading = selectBluetoothReading(activeOnly: true) {
             return bluetoothReading
         }
 
-        return dongleReading
+        if let dongleReading = selectDongleReading() {
+            return dongleReading
+        }
+
+        return bluetoothReading
+    }
+
+    private func selectBluetoothReading(activeOnly: Bool = false) -> BatteryReading? {
+        guard let bluetoothReading else { return nil }
+
+        if isActiveBluetooth(bluetoothReading) {
+            return bluetoothReading
+        }
+
+        return activeOnly ? nil : bluetoothReading
+    }
+
+    private func selectDongleReading(activeOnly: Bool = false) -> BatteryReading? {
+        guard let dongleReading else { return nil }
+
+        if isActiveDongle(dongleReading) {
+            return dongleReading
+        }
+
+        if readingPrefersDongle(dongleReading) {
+            return dongleReading
+        }
+
+        return activeOnly ? nil : dongleReading
     }
 
     private func isActiveDongle(_ reading: BatteryReading) -> Bool {
         switch reading.stateText {
-        case "2.4 GHz connected", "2.4 GHz charging", "Refreshing 2.4 GHz battery…":
+        case "2.4 GHz connected", "2.4 GHz charging":
             return true
         default:
             return false
@@ -634,7 +719,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func isPendingDongle(_ reading: BatteryReading) -> Bool {
         switch reading.stateText {
-        case "Reading 2.4 GHz battery…", "Refreshing 2.4 GHz battery…", "2.4 GHz retrying…", "2.4 GHz reconnecting…", "Allow Input Monitoring":
+        case "Requesting battery data…", "Requesting fresh battery data…", "2.4 GHz retrying…", "2.4 GHz reconnecting…", "Allow Input Monitoring":
             return true
         default:
             return false
@@ -645,7 +730,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch reading.stateText {
         case "Bluetooth connected":
             return reading.percent != nil
-        case "Refreshing Bluetooth battery…", "Reading Bluetooth battery…":
+        case "Requesting fresh battery data…", "Requesting battery data…", "Bluetooth reconnecting…":
             return true
         default:
             return false
@@ -654,6 +739,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func readingPrefersDongle(_ reading: BatteryReading) -> Bool {
         isPendingDongle(reading) || reading.stateText == "2.4 GHz receiver not found"
+    }
+
+    private func refreshForCurrentMode() {
+        switch connectionMode {
+        case .auto:
+            bluetoothMonitor.refresh()
+            dongleMonitor.refresh()
+        case .bluetoothOnly:
+            bluetoothMonitor.refresh()
+        case .dongleOnly:
+            dongleMonitor.refresh()
+        }
     }
 
     private func configureStatusButton() {
@@ -683,7 +780,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         let menu = NSMenu()
-        menu.addItem(withTitle: reading.stateText, action: nil, keyEquivalent: "")
         if let percent = reading.percent {
             menu.addItem(withTitle: "Battery: \(percent)%", action: nil, keyEquivalent: "")
         } else {
@@ -691,13 +787,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let voltage = reading.voltage {
             menu.addItem(withTitle: "Voltage: \(voltage) mV", action: nil, keyEquivalent: "")
+        } else if reading.connectionText == "Bluetooth" {
+            menu.addItem(withTitle: "Voltage: unavailable on Bluetooth", action: nil, keyEquivalent: "")
         } else {
             menu.addItem(withTitle: "Voltage: unavailable", action: nil, keyEquivalent: "")
         }
-        menu.addItem(withTitle: "Connection: \(reading.connectionText)", action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: "Last updated: \(relativeUpdateText(since: reading.updatedAt))", action: nil, keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Check Mode: \(connectionMode.menuTitle)", action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: "Current Connection Type: \(reading.connectionText)", action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: "Status: \(reading.stateText)", action: nil, keyEquivalent: "")
         if reading.requiresInputMonitoring {
             menu.addItem(withTitle: "Enable: \(appName)", action: nil, keyEquivalent: "")
         }
+        menu.addItem(.separator())
+
+        let autoModeItem = NSMenuItem(title: ConnectionMode.auto.menuTitle, action: #selector(setConnectionMode(_:)), keyEquivalent: "")
+        autoModeItem.target = self
+        autoModeItem.representedObject = ConnectionMode.auto.rawValue
+        autoModeItem.state = connectionMode == .auto ? .on : .off
+        menu.addItem(autoModeItem)
+
+        let bluetoothModeItem = NSMenuItem(title: ConnectionMode.bluetoothOnly.menuTitle, action: #selector(setConnectionMode(_:)), keyEquivalent: "")
+        bluetoothModeItem.target = self
+        bluetoothModeItem.representedObject = ConnectionMode.bluetoothOnly.rawValue
+        bluetoothModeItem.state = connectionMode == .bluetoothOnly ? .on : .off
+        menu.addItem(bluetoothModeItem)
+
+        let dongleModeItem = NSMenuItem(title: ConnectionMode.dongleOnly.menuTitle, action: #selector(setConnectionMode(_:)), keyEquivalent: "")
+        dongleModeItem.target = self
+        dongleModeItem.representedObject = ConnectionMode.dongleOnly.rawValue
+        dongleModeItem.state = connectionMode == .dongleOnly ? .on : .off
+        menu.addItem(dongleModeItem)
         menu.addItem(.separator())
 
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshNow), keyEquivalent: "r")
@@ -793,8 +914,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshNow() {
-        bluetoothMonitor.refresh()
-        dongleMonitor.refresh()
+        refreshForCurrentMode()
     }
 
     @objc private func checkForUpdates() {
@@ -815,6 +935,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openInputMonitoringFromMenu() {
         openInputMonitoringSettings()
+    }
+
+    @objc private func setConnectionMode(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let mode = ConnectionMode(rawValue: rawValue) else { return }
+        connectionMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: DefaultsKey.connectionMode)
+        refreshForCurrentMode()
+        refreshDisplayedReading()
     }
 
     @objc private func openSupportLink() {
