@@ -128,8 +128,7 @@ This app is configured for manual update checks only. It will only look for upda
 
 ## Future plans
 
-- broader Lofree keyboard compatibility testing
-- smoother Bluetooth and `2.4 GHz` handoff behavior
+- broader Lofree keyboard models compatibility 
 - You can request features here on the Reddit thread https://www.reddit.com/r/Lofree/comments/1s4e05k/
 ## Support
 
