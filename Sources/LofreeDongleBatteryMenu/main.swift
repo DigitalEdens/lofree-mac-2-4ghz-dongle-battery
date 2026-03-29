@@ -1,6 +1,7 @@
 import AppKit
 import CoreBluetooth
 import Foundation
+import IOKit.hid
 import Sparkle
 
 struct BatteryReading {
@@ -13,151 +14,72 @@ struct BatteryReading {
     let updatedAt: Date
 }
 
-private func dongleHelperDisplayName() -> String {
-    let helperAppURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/Lofree Dongle Battery Access.app")
-    guard let helperBundle = Bundle(url: helperAppURL) else {
-        return "Lofree Dongle Battery Access"
-    }
-
-    if let displayName = helperBundle.object(forInfoDictionaryKey: "CFBundleName") as? String,
+private func appDisplayName() -> String {
+    if let displayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String,
        !displayName.isEmpty {
         return displayName
     }
 
-    return "Lofree Dongle Battery Access"
+    return "LofreeDongleBatteryDev"
 }
 
 final class DongleBatteryMonitor {
     private enum Timing {
         static let retryDelaySeconds: TimeInterval = 3
+        static let overallReadTimeoutSeconds: TimeInterval = 15
     }
 
-    private enum HelperExitCode: Int32 {
-        case success = 0
-        case timedOut = 2
-        case receiverNotFound = 10
-        case inputMonitoringRequired = 11
+    private enum ReadResult {
+        case success(BatteryReading)
+        case timedOut
+        case receiverNotFound
+        case inputMonitoringRequired
     }
 
     var onUpdate: ((BatteryReading) -> Void)?
 
-    private var task: Process?
+    private let queue = DispatchQueue(label: "com.digitaledens.lofreedonglebattery.dev.dongle")
+    private var isReading = false
     private var lastSuccessfulReading: BatteryReading?
     private var retryWorkItem: DispatchWorkItem?
-
-    private var helperExecutableURL: URL? {
-        let helperApp = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/Lofree Dongle Battery Access.app")
-        let executable = helperApp.appendingPathComponent("Contents/MacOS/LofreeDongleBatteryAccess")
-        guard FileManager.default.isExecutableFile(atPath: executable.path) else { return nil }
-        return executable
-    }
 
     func refresh() {
         retryWorkItem?.cancel()
         retryWorkItem = nil
 
-        guard task == nil else { return }
+        guard !isReading else { return }
+        isReading = true
 
-        guard let helperExecutableURL else {
+        if let lastSuccessfulReading {
             publish(BatteryReading(
-                percent: nil,
-                charging: false,
-                voltage: nil,
-                stateText: "Battery access helper missing",
+                percent: lastSuccessfulReading.percent,
+                charging: lastSuccessfulReading.charging,
+                voltage: lastSuccessfulReading.voltage,
+                stateText: "Refreshing 2.4 GHz battery…",
                 connectionText: "2.4 GHz",
                 requiresInputMonitoring: false,
                 updatedAt: Date()
             ))
-            return
+        } else {
+            publish(BatteryReading(
+                percent: nil,
+                charging: false,
+                voltage: nil,
+                stateText: "Reading 2.4 GHz battery…",
+                connectionText: "2.4 GHz",
+                requiresInputMonitoring: false,
+                updatedAt: Date()
+            ))
         }
 
-        let process = Process()
-        process.executableURL = helperExecutableURL
-        let stdout = Pipe()
-        process.standardOutput = stdout
-
-        process.terminationHandler = { [weak self] process in
+        queue.async { [weak self] in
             guard let self else { return }
-            let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            self.task = nil
-
-            if let reading = self.parseReading(output) {
-                self.lastSuccessfulReading = reading
-                self.publish(reading)
-            } else {
-                self.handleFailedRead(process.terminationStatus)
+            let result = self.readDongleBattery()
+            DispatchQueue.main.async {
+                self.isReading = false
+                self.handleReadResult(result)
             }
         }
-
-        do {
-            try process.run()
-            task = process
-            if let lastSuccessfulReading {
-                publish(BatteryReading(
-                    percent: lastSuccessfulReading.percent,
-                    charging: lastSuccessfulReading.charging,
-                    voltage: lastSuccessfulReading.voltage,
-                    stateText: "Refreshing 2.4 GHz battery…",
-                    connectionText: "2.4 GHz",
-                    requiresInputMonitoring: false,
-                    updatedAt: Date()
-                ))
-            } else {
-                publish(BatteryReading(
-                    percent: nil,
-                    charging: false,
-                    voltage: nil,
-                    stateText: "Reading 2.4 GHz battery…",
-                    connectionText: "2.4 GHz",
-                    requiresInputMonitoring: false,
-                    updatedAt: Date()
-                ))
-            }
-        } catch {
-            publish(BatteryReading(
-                percent: nil,
-                charging: false,
-                voltage: nil,
-                stateText: "2.4 GHz launch failed",
-                connectionText: "2.4 GHz",
-                requiresInputMonitoring: false,
-                updatedAt: Date()
-            ))
-        }
-    }
-
-    private func parseReading(_ output: String) -> BatteryReading? {
-        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.contains("BATTERY") else { return nil }
-
-        var percent: Int?
-        var charging: Int?
-        var voltage: Int?
-        for token in trimmed.split(separator: " ") {
-            let parts = token.split(separator: "=", maxSplits: 1).map(String.init)
-            guard parts.count == 2 else { continue }
-            switch parts[0] {
-            case "percent":
-                percent = Int(parts[1])
-            case "charging":
-                charging = Int(parts[1])
-            case "voltage":
-                voltage = Int(parts[1])
-            default:
-                break
-            }
-        }
-
-        guard let percent, let charging, let voltage else { return nil }
-        return BatteryReading(
-            percent: percent,
-            charging: charging != 0,
-            voltage: voltage,
-            stateText: charging != 0 ? "2.4 GHz charging" : "2.4 GHz connected",
-            connectionText: "2.4 GHz",
-            requiresInputMonitoring: false,
-            updatedAt: Date()
-        )
     }
 
     private func publish(_ reading: BatteryReading) {
@@ -174,8 +96,11 @@ final class DongleBatteryMonitor {
         DispatchQueue.main.asyncAfter(deadline: .now() + Timing.retryDelaySeconds, execute: workItem)
     }
 
-    private func handleFailedRead(_ exitCode: Int32) {
-        switch HelperExitCode(rawValue: exitCode) {
+    private func handleReadResult(_ result: ReadResult) {
+        switch result {
+        case .success(let reading):
+            lastSuccessfulReading = reading
+            publish(reading)
         case .receiverNotFound:
             publish(BatteryReading(
                 percent: nil,
@@ -207,18 +132,225 @@ final class DongleBatteryMonitor {
                 updatedAt: Date()
             ))
             scheduleRetry()
-        case .success, .none:
-            publish(BatteryReading(
-                percent: lastSuccessfulReading?.percent,
-                charging: lastSuccessfulReading?.charging ?? false,
-                voltage: lastSuccessfulReading?.voltage,
-                stateText: "2.4 GHz reconnecting…",
+        }
+    }
+
+    private final class ReaderContext {
+        var callbackBuffer = [UInt8](repeating: 0, count: 64)
+        var callbackMessages = [[UInt8]]()
+    }
+
+    private func readDongleBattery() -> ReadResult {
+        guard let device = matchingDongle() else {
+            return .receiverNotFound
+        }
+
+        let openResult = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
+        guard openResult == kIOReturnSuccess else {
+            return .inputMonitoringRequired
+        }
+
+        let context = ReaderContext()
+        registerCallback(device, context: context)
+        drainRunLoop(milliseconds: 100)
+
+        let deadline = Date().addingTimeInterval(Timing.overallReadTimeoutSeconds)
+        var reading: BatteryReading?
+        while Date() < deadline, reading == nil {
+            reading = runAttempt(device, context: context, deadline: deadline)
+        }
+
+        IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
+
+        if let reading {
+            return .success(reading)
+        }
+
+        return .timedOut
+    }
+
+    private func intProperty(_ device: IOHIDDevice, _ key: CFString) -> Int {
+        guard let value = IOHIDDeviceGetProperty(device, key) else { return 0 }
+        return (value as? NSNumber)?.intValue ?? 0
+    }
+
+    private func stringProperty(_ device: IOHIDDevice, _ key: CFString) -> String {
+        guard let value = IOHIDDeviceGetProperty(device, key) else { return "" }
+        return value as? String ?? ""
+    }
+
+    private func matchingDongle() -> IOHIDDevice? {
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        IOHIDManagerSetDeviceMatching(manager, nil)
+        IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+
+        guard let set = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else {
+            return nil
+        }
+
+        return set.first(where: {
+            let product = stringProperty($0, kIOHIDProductKey as CFString)
+            let vendorID = intProperty($0, kIOHIDVendorIDKey as CFString)
+            let productID = intProperty($0, kIOHIDProductIDKey as CFString)
+            let usagePage = intProperty($0, kIOHIDPrimaryUsagePageKey as CFString)
+            let usage = intProperty($0, kIOHIDPrimaryUsageKey as CFString)
+            return (product.localizedCaseInsensitiveContains("2.4G Wireless Receiver")
+                || (vendorID == 0x05ac && productID == 0x024f))
+                && usagePage == 0x0c
+                && usage == 0x01
+        })
+    }
+
+    private func checksum(_ bytes: [UInt8]) -> UInt8 {
+        let sum = bytes.dropLast().reduce(0) { ($0 + Int($1)) & 0xff }
+        return UInt8((85 - sum) & 0xff)
+    }
+
+    private func commandPacket(_ command: UInt8, flag: UInt8 = 0x80, payload: [UInt8] = []) -> [UInt8] {
+        var packet = [UInt8](repeating: 0, count: 17)
+        packet[0] = 0x08
+        packet[1] = command
+        packet[5] = flag
+        for (index, value) in payload.prefix(10).enumerated() {
+            packet[6 + index] = value
+        }
+        packet[16] = checksum(packet)
+        return packet
+    }
+
+    private func command8Packet(address: Int, length: Int) -> [UInt8] {
+        var packet = [UInt8](repeating: 0, count: 17)
+        packet[0] = 0x08
+        packet[1] = 0x08
+        packet[3] = UInt8((address >> 8) & 0xff)
+        packet[4] = UInt8(address & 0xff)
+        packet[5] = UInt8(length + 0x80)
+        packet[16] = checksum(packet)
+        return packet
+    }
+
+    private let windowsInit: [[UInt8]] = [
+        [0x08, 0x03, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xca],
+        [0x08, 0x01, 0x00, 0x00, 0x00, 0x88, 0xe4, 0x05, 0x2a, 0x53, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5e],
+        [0x08, 0x01, 0x00, 0x00, 0x00, 0x88, 0x1d, 0x5e, 0x01, 0x56, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf2],
+        [0x08, 0x01, 0x00, 0x00, 0x00, 0x88, 0xd2, 0x14, 0xe1, 0xeb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12],
+    ]
+
+    private let windowsFollowUp: [[UInt8]] = [
+        [0x08, 0x01, 0x00, 0x00, 0x00, 0x88, 0x50, 0xd5, 0x57, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8],
+        [0x08, 0x01, 0x00, 0x00, 0x00, 0x88, 0x19, 0x55, 0x10, 0xef, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x57],
+        [0x08, 0x01, 0x00, 0x00, 0x00, 0x88, 0x2b, 0x61, 0x4a, 0xe1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d],
+    ]
+
+    private func drainRunLoop(milliseconds: Int) {
+        let until = Date().addingTimeInterval(Double(milliseconds) / 1000.0)
+        while Date() < until {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02))
+        }
+    }
+
+    private func registerCallback(_ device: IOHIDDevice, context: ReaderContext) {
+        IOHIDDeviceRegisterInputReportCallback(
+            device,
+            &context.callbackBuffer,
+            context.callbackBuffer.count,
+            { contextPointer, _, _, _, reportID, report, reportLength in
+                guard let contextPointer else { return }
+                let context = Unmanaged<ReaderContext>.fromOpaque(contextPointer).takeUnretainedValue()
+                let bytes = Array(UnsafeBufferPointer(start: report, count: reportLength))
+                context.callbackMessages.append([UInt8(reportID)] + bytes)
+            },
+            Unmanaged.passUnretained(context).toOpaque()
+        )
+        IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+    }
+
+    private func send(_ device: IOHIDDevice, _ packet: [UInt8], waitMs: Int) {
+        packet.withUnsafeBytes { ptr in
+            _ = IOHIDDeviceSetReport(
+                device,
+                kIOHIDReportTypeOutput,
+                8,
+                ptr.bindMemory(to: UInt8.self).baseAddress!,
+                packet.count
+            )
+        }
+        drainRunLoop(milliseconds: waitMs)
+    }
+
+    private func timeRemainingMs(until deadline: Date) -> Int {
+        max(0, Int(deadline.timeIntervalSinceNow * 1000))
+    }
+
+    @discardableResult
+    private func sendUntilDeadline(_ device: IOHIDDevice, _ packet: [UInt8], waitMs: Int, deadline: Date) -> Bool {
+        guard timeRemainingMs(until: deadline) > 0 else { return false }
+        send(device, packet, waitMs: min(waitMs, timeRemainingMs(until: deadline)))
+        return timeRemainingMs(until: deadline) > 0
+    }
+
+    private func extractBattery(from messages: [[UInt8]]) -> BatteryReading? {
+        for message in messages {
+            guard message.count >= 11 else { continue }
+            guard message[0] == 0x08, message[1] == 0x08, message[2] == 0x04 else { continue }
+            let percent = Int(message[7])
+            let charging = message[8] == 1
+            let voltage = (Int(message[9]) << 8) | Int(message[10])
+            return BatteryReading(
+                percent: percent,
+                charging: charging,
+                voltage: voltage,
+                stateText: charging ? "2.4 GHz charging" : "2.4 GHz connected",
                 connectionText: "2.4 GHz",
                 requiresInputMonitoring: false,
                 updatedAt: Date()
-            ))
-            scheduleRetry()
+            )
         }
+        return nil
+    }
+
+    private func runAttempt(_ device: IOHIDDevice, context: ReaderContext, deadline: Date) -> BatteryReading? {
+        context.callbackMessages.removeAll()
+
+        for packet in windowsInit {
+            guard sendUntilDeadline(device, packet, waitMs: 250, deadline: deadline) else { return extractBattery(from: context.callbackMessages) }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+        }
+
+        let webStyleWarmup: [[UInt8]] = [
+            commandPacket(0x03),
+            commandPacket(0x02, flag: 0x81, payload: [0x01]),
+            command8Packet(address: 0, length: 10),
+            command8Packet(address: 8496, length: 6),
+            commandPacket(0x0e),
+            commandPacket(0x12),
+            commandPacket(0x1d),
+            commandPacket(0x03),
+        ]
+
+        for packet in webStyleWarmup {
+            guard sendUntilDeadline(device, packet, waitMs: 300, deadline: deadline) else { return extractBattery(from: context.callbackMessages) }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+        }
+
+        for packet in windowsInit + windowsFollowUp {
+            guard sendUntilDeadline(device, packet, waitMs: 250, deadline: deadline) else { return extractBattery(from: context.callbackMessages) }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+        }
+
+        let batteryPacket = commandPacket(0x04)
+        let onlinePacket = commandPacket(0x03)
+        for _ in 0..<20 {
+            guard sendUntilDeadline(device, batteryPacket, waitMs: 1200, deadline: deadline) else { return extractBattery(from: context.callbackMessages) }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+            drainRunLoop(milliseconds: min(500, timeRemainingMs(until: deadline)))
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+            guard sendUntilDeadline(device, onlinePacket, waitMs: 800, deadline: deadline) else { return extractBattery(from: context.callbackMessages) }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+        }
+
+        return extractBattery(from: context.callbackMessages)
     }
 }
 
@@ -427,7 +559,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let dongleMonitor = DongleBatteryMonitor()
     private let bluetoothMonitor = BluetoothBatteryMonitor()
     private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
-    private let helperDisplayName = dongleHelperDisplayName()
+    private let appName = appDisplayName()
 
     private var dongleReading: BatteryReading?
     private var bluetoothReading: BatteryReading?
@@ -564,7 +696,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.addItem(withTitle: "Connection: \(reading.connectionText)", action: nil, keyEquivalent: "")
         if reading.requiresInputMonitoring {
-            menu.addItem(withTitle: "Enable: \(helperDisplayName)", action: nil, keyEquivalent: "")
+            menu.addItem(withTitle: "Enable: \(appName)", action: nil, keyEquivalent: "")
         }
         menu.addItem(.separator())
 
@@ -632,7 +764,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             To read the keyboard battery over 2.4 GHz, enable Input Monitoring for:
 
-            \(self.helperDisplayName)
+            \(self.appName)
             """
             alert.addButton(withTitle: "Open Settings")
             alert.addButton(withTitle: "Later")
