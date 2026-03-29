@@ -566,13 +566,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if reading.requiresInputMonitoring {
             menu.addItem(withTitle: "Enable: \(helperDisplayName)", action: nil, keyEquivalent: "")
         }
-        let settingsItem = NSMenuItem(title: "Open Input Monitoring Settings", action: #selector(openInputMonitoringFromMenu), keyEquivalent: "")
-        settingsItem.target = self
-        if let image = NSImage(systemSymbolName: "hand.raised", accessibilityDescription: "Open Input Monitoring Settings") {
-            image.isTemplate = true
-            settingsItem.image = image
-        }
-        menu.addItem(settingsItem)
         menu.addItem(.separator())
 
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refreshNow), keyEquivalent: "r")
@@ -590,6 +583,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updatesItem.image = image
         }
         menu.addItem(updatesItem)
+
+        let settingsItem = NSMenuItem(title: "Open Input Monitoring Settings", action: #selector(openInputMonitoringFromMenu), keyEquivalent: "")
+        settingsItem.target = self
+        if let image = NSImage(systemSymbolName: "hand.raised", accessibilityDescription: "Open Input Monitoring Settings") {
+            image.isTemplate = true
+            settingsItem.image = image
+        }
+        menu.addItem(settingsItem)
         menu.addItem(.separator())
 
         let supportItem = NSMenuItem(title: Support.menuTitle, action: #selector(openSupportLink), keyEquivalent: "")

@@ -18,7 +18,30 @@ HELPER_ICON_FILE="$HELPER_APP_DIR/Contents/Resources/AppIcon.icns"
 SPARKLE_DIR="$ROOT_DIR/Vendor"
 SPARKLE_FRAMEWORK_SRC="$SPARKLE_DIR/Sparkle.framework"
 SPARKLE_FRAMEWORK_DST="$FRAMEWORKS_DIR/Sparkle.framework"
-SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+discover_sign_identity() {
+  if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
+    printf '%s\n' "$CODESIGN_IDENTITY"
+    return
+  fi
+
+  local developer_id
+  developer_id="$(security find-identity -v -p codesigning 2>/dev/null | sed -E -n 's/.*"(Developer ID Application:.*)"/\1/p' | head -n 1)"
+  if [[ -n "$developer_id" ]]; then
+    printf '%s\n' "$developer_id"
+    return
+  fi
+
+  local apple_development
+  apple_development="$(security find-identity -v -p codesigning 2>/dev/null | sed -E -n 's/.*"(Apple Development:.*)"/\1/p' | head -n 1)"
+  if [[ -n "$apple_development" ]]; then
+    printf '%s\n' "$apple_development"
+    return
+  fi
+
+  printf '%s\n' "-"
+}
+
+SIGN_IDENTITY="$(discover_sign_identity)"
 DEV_FEED_URL="$(python3 - <<'PY' "$ROOT_DIR/docs/dev-appcast.xml"
 from pathlib import Path
 import sys
