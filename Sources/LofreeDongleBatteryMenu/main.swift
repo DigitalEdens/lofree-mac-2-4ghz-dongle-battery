@@ -209,10 +209,6 @@ final class DongleBatteryMonitor {
 }
 
 final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
-    private enum Timing {
-        static let scanTimeoutSeconds: TimeInterval = 8
-    }
-
     var onUpdate: ((BatteryReading) -> Void)?
 
     private let batteryServiceUUID = CBUUID(string: "180F")
@@ -220,7 +216,6 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
     private var centralManager: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var batteryCharacteristic: CBCharacteristic?
-    private var scanTimeoutWorkItem: DispatchWorkItem?
     private var lastSuccessfulReading: BatteryReading?
 
     func start() {
@@ -280,63 +275,26 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
     }
 
     private func discoverKeyboard(using centralManager: CBCentralManager) {
-        scanTimeoutWorkItem?.cancel()
-        scanTimeoutWorkItem = nil
-
         let connected = centralManager.retrieveConnectedPeripherals(withServices: [batteryServiceUUID])
         if let matched = connected.first(where: isLikelyLofreePeripheral) ?? connected.first {
             adopt(peripheral: matched, using: centralManager)
             return
         }
 
-        if let lastSuccessfulReading {
-            publish(BatteryReading(
-                percent: lastSuccessfulReading.percent,
-                charging: false,
-                voltage: nil,
-                stateText: "Scanning Bluetooth devices…",
-                connectionText: "Bluetooth",
-                requiresInputMonitoring: false,
-                updatedAt: Date()
-            ))
-        } else {
-            publish(BatteryReading(
-                percent: nil,
-                charging: false,
-                voltage: nil,
-                stateText: "Scanning Bluetooth devices…",
-                connectionText: "Bluetooth",
-                requiresInputMonitoring: false,
-                updatedAt: Date()
-            ))
-        }
-
-        centralManager.scanForPeripherals(withServices: [batteryServiceUUID], options: [
-            CBCentralManagerScanOptionAllowDuplicatesKey: false,
-        ])
-
-        let timeout = DispatchWorkItem { [weak self] in
-            guard let self, let centralManager = self.centralManager else { return }
-            centralManager.stopScan()
-            self.publish(BatteryReading(
-                percent: self.lastSuccessfulReading?.percent,
-                charging: false,
-                voltage: nil,
-                stateText: self.lastSuccessfulReading == nil ? "Bluetooth battery not found" : "Bluetooth reconnecting…",
-                connectionText: "Bluetooth",
-                requiresInputMonitoring: false,
-                updatedAt: Date()
-            ))
-        }
-        scanTimeoutWorkItem = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + Timing.scanTimeoutSeconds, execute: timeout)
+        self.peripheral = nil
+        self.batteryCharacteristic = nil
+        publish(BatteryReading(
+            percent: lastSuccessfulReading?.percent,
+            charging: false,
+            voltage: nil,
+            stateText: lastSuccessfulReading == nil ? "Bluetooth not connected" : "Bluetooth reconnecting…",
+            connectionText: "Bluetooth",
+            requiresInputMonitoring: false,
+            updatedAt: Date()
+        ))
     }
 
     private func adopt(peripheral: CBPeripheral, using centralManager: CBCentralManager) {
-        scanTimeoutWorkItem?.cancel()
-        scanTimeoutWorkItem = nil
-        centralManager.stopScan()
-
         self.peripheral = peripheral
         peripheral.delegate = self
 
@@ -379,12 +337,6 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         refresh()
-    }
-
-    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        if isLikelyLofreePeripheral(peripheral) {
-            adopt(peripheral: peripheral, using: central)
-        }
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -513,15 +465,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return dongleReading
         }
 
-        if let bluetoothReading, bluetoothReading.percent != nil {
+        if let bluetoothReading, isActiveBluetooth(bluetoothReading) {
             return bluetoothReading
         }
 
-        if let dongleReading, dongleReading.percent != nil {
-            return dongleReading
-        }
-
-        if let dongleReading, dongleReading.requiresInputMonitoring {
+        if let dongleReading, isPendingDongle(dongleReading), bluetoothReading?.percent == nil {
             return dongleReading
         }
 
@@ -536,6 +484,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch reading.stateText {
         case "2.4 GHz connected", "2.4 GHz charging", "Refreshing 2.4 GHz battery…":
             return true
+        default:
+            return false
+        }
+    }
+
+    private func isPendingDongle(_ reading: BatteryReading) -> Bool {
+        switch reading.stateText {
+        case "Reading 2.4 GHz battery…", "Refreshing 2.4 GHz battery…":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func isActiveBluetooth(_ reading: BatteryReading) -> Bool {
+        switch reading.stateText {
+        case "Bluetooth connected", "Refreshing Bluetooth battery…":
+            return reading.percent != nil
         default:
             return false
         }
