@@ -12,7 +12,8 @@ SPARKLE_BIN="$ROOT_DIR/Vendor/bin/sign_update"
 SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PLIST")"
 BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PLIST")"
 MIN_SYSTEM_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_PLIST")"
-DMG_NAME="LofreeDongleBatteryDev-${SHORT_VERSION}.dmg"
+DMG_SUFFIX="${DEV_RELEASE_SUFFIX:--compat-debug}"
+DMG_NAME="LofreeDongleBatteryDev-${SHORT_VERSION}${DMG_SUFFIX}.dmg"
 DMG_PATH="$ROOT_DIR/dist-dev/$DMG_NAME"
 DOWNLOAD_URL="$(python3 - <<'PY' "$DMG_PATH"
 from pathlib import Path
@@ -40,7 +41,7 @@ if [[ ! -f "$RELEASE_NOTES_DIR/${SHORT_VERSION}.md" ]]; then
   cat > "$RELEASE_NOTES_DIR/${SHORT_VERSION}.md" <<EOF
 # Lofree Dongle Battery Dev ${SHORT_VERSION}
 
-- Local dev build for testing features before they are approved for the public app.
+- Compatibility debug build for testing unsupported 2.4 GHz Lofree models before changes are approved for the public app.
 EOF
 fi
 

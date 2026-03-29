@@ -39,6 +39,16 @@ private func relativeUpdateText(since date: Date) -> String {
     return "\(hours)h ago"
 }
 
+private func hexString(_ bytes: [UInt8]) -> String {
+    bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
+}
+
+private func exportTimestamp() -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+    return formatter.string(from: Date())
+}
+
 private enum ConnectionMode: String {
     case auto
     case bluetoothOnly
@@ -57,6 +67,10 @@ private enum ConnectionMode: String {
 }
 
 final class DongleBatteryMonitor {
+    struct CompatibilityReport {
+        let text: String
+    }
+
     private enum Timing {
         static let retryDelaySeconds: TimeInterval = 3
         static let overallReadTimeoutSeconds: TimeInterval = 15
@@ -173,6 +187,16 @@ final class DongleBatteryMonitor {
         var callbackMessages = [[UInt8]]()
     }
 
+    func buildCompatibilityReport(metadata: [String], completion: @escaping (CompatibilityReport) -> Void) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let report = self.generateCompatibilityReport(metadata: metadata)
+            DispatchQueue.main.async {
+                completion(report)
+            }
+        }
+    }
+
     private func readDongleBattery() -> ReadResult {
         guard let device = matchingDongle() else {
             return .receiverNotFound
@@ -201,6 +225,144 @@ final class DongleBatteryMonitor {
         }
 
         return .timedOut
+    }
+
+    private func generateCompatibilityReport(metadata: [String]) -> CompatibilityReport {
+        var lines: [String] = []
+        lines.append("Lofree 2.4 GHz Compatibility Report")
+        lines.append("Generated: \(ISO8601DateFormatter().string(from: Date()))")
+        lines.append("App: \(appDisplayName())")
+        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+           let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String {
+            lines.append("App version: \(version) (\(build))")
+        }
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersion
+        lines.append("macOS: \(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)")
+        for entry in metadata {
+            lines.append(entry)
+        }
+        if let lastSuccessfulReading {
+            lines.append("Last successful in-app 2.4 GHz reading: \(lastSuccessfulReading.percent.map { "\($0)%" } ?? "unavailable"), voltage \(lastSuccessfulReading.voltage.map { "\($0) mV" } ?? "unavailable"), status \(lastSuccessfulReading.stateText)")
+        } else {
+            lines.append("Last successful in-app 2.4 GHz reading: none")
+        }
+        lines.append("")
+
+        guard let device = matchingDongle() else {
+            lines.append("Result: No matching 2.4 GHz receiver found")
+            return CompatibilityReport(text: lines.joined(separator: "\n"))
+        }
+
+        let product = stringProperty(device, kIOHIDProductKey as CFString)
+        let manufacturer = stringProperty(device, kIOHIDManufacturerKey as CFString)
+        let vendorID = intProperty(device, kIOHIDVendorIDKey as CFString)
+        let productID = intProperty(device, kIOHIDProductIDKey as CFString)
+        let usagePage = intProperty(device, kIOHIDPrimaryUsagePageKey as CFString)
+        let usage = intProperty(device, kIOHIDPrimaryUsageKey as CFString)
+
+        lines.append("Selected receiver")
+        lines.append("Product: \(product.isEmpty ? "unknown" : product)")
+        lines.append("Manufacturer: \(manufacturer.isEmpty ? "unknown" : manufacturer)")
+        lines.append(String(format: "Vendor ID: 0x%04X", vendorID))
+        lines.append(String(format: "Product ID: 0x%04X", productID))
+        lines.append(String(format: "Usage Page: 0x%04X", usagePage))
+        lines.append(String(format: "Usage: 0x%04X", usage))
+        lines.append("")
+
+        let openResult = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
+        lines.append("IOHIDDeviceOpen result: \(openResult)")
+        if openResult != kIOReturnSuccess {
+            lines.append("Result: Input Monitoring likely required or device open failed")
+            return CompatibilityReport(text: lines.joined(separator: "\n"))
+        }
+
+        let context = ReaderContext()
+        registerCallback(device, context: context)
+        drainRunLoop(milliseconds: 100)
+
+        var sentPackets: [(String, [UInt8])] = []
+        let deadline = Date().addingTimeInterval(Timing.overallReadTimeoutSeconds)
+        let decodedReading = runCompatibilityAttempt(device, context: context, deadline: deadline) { label, packet in
+            sentPackets.append((label, packet))
+        }
+
+        IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
+
+        lines.append("Sent packets")
+        if sentPackets.isEmpty {
+            lines.append("- none")
+        } else {
+            for (index, entry) in sentPackets.enumerated() {
+                lines.append("\(index + 1). \(entry.0) [\(entry.1.count) bytes]")
+                lines.append("   \(hexString(entry.1))")
+            }
+        }
+        lines.append("")
+
+        lines.append("Received packets")
+        if context.callbackMessages.isEmpty {
+            lines.append("- none")
+        } else {
+            for (index, message) in context.callbackMessages.enumerated() {
+                let isBatteryCandidate =
+                    message.count >= 11 &&
+                    message[0] == 0x08 &&
+                    message[1] == 0x08 &&
+                    message[2] == 0x04
+                let suffix = isBatteryCandidate ? " [battery-candidate]" : ""
+                lines.append("\(index + 1). [\(message.count) bytes]\(suffix)")
+                lines.append("   \(hexString(message))")
+            }
+        }
+        lines.append("")
+
+        if !context.callbackMessages.isEmpty {
+            lines.append("Received packet family summary")
+            let families = Dictionary(grouping: context.callbackMessages) { message -> String in
+                let prefix = Array(message.prefix(3))
+                return hexString(prefix)
+            }
+            for key in families.keys.sorted() {
+                let count = families[key]?.count ?? 0
+                lines.append("- \(key): \(count) packet(s)")
+            }
+            lines.append("- Expected Flow Lite100 battery family: 08 08 04")
+            let sawExpectedFamily = context.callbackMessages.contains { message in
+                message.count >= 3 && message[0] == 0x08 && message[1] == 0x08 && message[2] == 0x04
+            }
+            lines.append("- Observed expected battery family: \(sawExpectedFamily ? "yes" : "no")")
+            lines.append("")
+        }
+
+        var summary: [String] = []
+        summary.append("Summary verdict")
+        summary.append("- Receiver matched: yes")
+        summary.append("- IOHID open succeeded: \(openResult == kIOReturnSuccess ? "yes" : "no")")
+        let sawExpectedFamily = context.callbackMessages.contains { message in
+            message.count >= 3 && message[0] == 0x08 && message[1] == 0x08 && message[2] == 0x04
+        }
+        summary.append("- Expected battery packet family observed: \(sawExpectedFamily ? "yes" : "no")")
+
+        if let decodedReading {
+            summary.append("- Battery decode succeeded: yes")
+            summary.append("- Decoded percent: \(decodedReading.percent.map(String.init) ?? "unavailable")")
+            summary.append("- Decoded voltage: \(decodedReading.voltage.map(String.init) ?? "unavailable")")
+            lines.append(contentsOf: summary)
+            lines.append("")
+            lines.append("Decoded battery reading")
+            lines.append("Percent: \(decodedReading.percent.map(String.init) ?? "unavailable")")
+            lines.append("Charging: \(decodedReading.charging ? "yes" : "no")")
+            lines.append("Voltage: \(decodedReading.voltage.map { "\($0) mV" } ?? "unavailable")")
+        } else {
+            summary.append("- Battery decode succeeded: no")
+            lines.append(contentsOf: summary)
+            lines.append("")
+            lines.append("Decoded battery reading")
+            lines.append("No battery packet was decoded with the current Flow Lite100 logic")
+        }
+
+        return CompatibilityReport(text: lines.joined(separator: "\n"))
     }
 
     private func intProperty(_ device: IOHIDDevice, _ key: CFString) -> Int {
@@ -380,6 +542,69 @@ final class DongleBatteryMonitor {
             drainRunLoop(milliseconds: min(500, timeRemainingMs(until: deadline)))
             if let reading = extractBattery(from: context.callbackMessages) { return reading }
             guard sendUntilDeadline(device, onlinePacket, waitMs: 800, deadline: deadline) else { return extractBattery(from: context.callbackMessages) }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+        }
+
+        return extractBattery(from: context.callbackMessages)
+    }
+
+    private func runCompatibilityAttempt(
+        _ device: IOHIDDevice,
+        context: ReaderContext,
+        deadline: Date,
+        packetLogger: (String, [UInt8]) -> Void
+    ) -> BatteryReading? {
+        context.callbackMessages.removeAll()
+
+        for (index, packet) in windowsInit.enumerated() {
+            packetLogger("windowsInit[\(index)]", packet)
+            guard sendUntilDeadline(device, packet, waitMs: 250, deadline: deadline) else {
+                return extractBattery(from: context.callbackMessages)
+            }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+        }
+
+        let webStyleWarmup: [(String, [UInt8])] = [
+            ("commandPacket(0x03)", commandPacket(0x03)),
+            ("commandPacket(0x02, flag:0x81, payload:[0x01])", commandPacket(0x02, flag: 0x81, payload: [0x01])),
+            ("command8Packet(address:0, length:10)", command8Packet(address: 0, length: 10)),
+            ("command8Packet(address:8496, length:6)", command8Packet(address: 8496, length: 6)),
+            ("commandPacket(0x0e)", commandPacket(0x0e)),
+            ("commandPacket(0x12)", commandPacket(0x12)),
+            ("commandPacket(0x1d)", commandPacket(0x1d)),
+            ("commandPacket(0x03)", commandPacket(0x03)),
+        ]
+
+        for (label, packet) in webStyleWarmup {
+            packetLogger(label, packet)
+            guard sendUntilDeadline(device, packet, waitMs: 300, deadline: deadline) else {
+                return extractBattery(from: context.callbackMessages)
+            }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+        }
+
+        for (index, packet) in (windowsInit + windowsFollowUp).enumerated() {
+            packetLogger("windowsReplay[\(index)]", packet)
+            guard sendUntilDeadline(device, packet, waitMs: 250, deadline: deadline) else {
+                return extractBattery(from: context.callbackMessages)
+            }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+        }
+
+        let batteryPacket = commandPacket(0x04)
+        let onlinePacket = commandPacket(0x03)
+        for iteration in 0..<20 {
+            packetLogger("batteryPacket[\(iteration)]", batteryPacket)
+            guard sendUntilDeadline(device, batteryPacket, waitMs: 1200, deadline: deadline) else {
+                return extractBattery(from: context.callbackMessages)
+            }
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+            drainRunLoop(milliseconds: min(500, timeRemainingMs(until: deadline)))
+            if let reading = extractBattery(from: context.callbackMessages) { return reading }
+            packetLogger("onlinePacket[\(iteration)]", onlinePacket)
+            guard sendUntilDeadline(device, onlinePacket, waitMs: 800, deadline: deadline) else {
+                return extractBattery(from: context.callbackMessages)
+            }
             if let reading = extractBattery(from: context.callbackMessages) { return reading }
         }
 
@@ -595,6 +820,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private enum Support {
         static let menuTitle = "Buy me a coffee"
         static let url = "https://digitaledens.com/buy-me-a-coffee/"
+    }
+
+    private enum Compatibility {
+        static let reportTitle = "Export 2.4 GHz Compatibility Report…"
     }
 
     private enum DefaultsKey {
@@ -844,6 +1073,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settingsItem.image = image
         }
         menu.addItem(settingsItem)
+
+        let reportItem = NSMenuItem(title: Compatibility.reportTitle, action: #selector(exportCompatibilityReport), keyEquivalent: "")
+        reportItem.target = self
+        if let image = NSImage(systemSymbolName: "doc.text.magnifyingglass", accessibilityDescription: Compatibility.reportTitle) {
+            image.isTemplate = true
+            reportItem.image = image
+        }
+        menu.addItem(reportItem)
         menu.addItem(.separator())
 
         let supportItem = NSMenuItem(title: Support.menuTitle, action: #selector(openSupportLink), keyEquivalent: "")
@@ -915,6 +1152,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func refreshNow() {
         refreshForCurrentMode()
+    }
+
+    @objc private func exportCompatibilityReport() {
+        let panel = NSSavePanel()
+        panel.title = "Export 2.4 GHz Compatibility Report"
+        panel.nameFieldStringValue = "Lofree-2.4GHz-Compatibility-\(exportTimestamp()).txt"
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let metadata = [
+            "Trigger: Manual export",
+            "Current check mode: \(connectionMode.menuTitle)",
+            "Current connection type shown in app: \(reading.connectionText)",
+            "Current status shown in app: \(reading.stateText)",
+            "Current battery shown in app: \(reading.percent.map { "\($0)%" } ?? "unavailable")",
+            "Current voltage shown in app: \(reading.voltage.map { "\($0) mV" } ?? (reading.connectionText == "Bluetooth" ? "unavailable on Bluetooth" : "unavailable"))",
+            "Input Monitoring currently required by app: \(reading.requiresInputMonitoring ? "yes" : "no")"
+        ]
+
+        dongleMonitor.buildCompatibilityReport(metadata: metadata) { [weak self] report in
+            do {
+                try report.text.write(to: url, atomically: true, encoding: .utf8)
+                let alert = NSAlert()
+                alert.messageText = "Compatibility Report Saved"
+                alert.informativeText = "Saved the 2.4 GHz compatibility report to:\n\n\(url.path)\n\nYou can send this file to help me add support for other Lofree models."
+                alert.addButton(withTitle: "OK")
+                alert.addButton(withTitle: "Reveal in Finder")
+                let response = alert.runModal()
+                if response == .alertSecondButtonReturn {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+            } catch {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = "Could Not Save Report"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+            self?.refreshDisplayedReading()
+        }
     }
 
     @objc private func checkForUpdates() {

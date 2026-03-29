@@ -7,7 +7,8 @@ APP_PLIST="$ROOT_DIR/App/Info.plist"
 APP_NAME="LofreeDongleBatteryDev.app"
 APP_DIR="$DIST_DIR/$APP_NAME"
 SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PLIST")"
-DMG_NAME="LofreeDongleBatteryDev-${SHORT_VERSION}.dmg"
+DMG_SUFFIX="${DEV_RELEASE_SUFFIX:--compat-debug}"
+DMG_NAME="LofreeDongleBatteryDev-${SHORT_VERSION}${DMG_SUFFIX}.dmg"
 STAGING_DIR="$DIST_DIR/dmg-staging"
 APPLICATIONS_LINK="$STAGING_DIR/Applications"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
@@ -25,7 +26,7 @@ ditto "$APP_DIR" "$STAGING_DIR/$APP_NAME"
 ln -s /Applications "$APPLICATIONS_LINK"
 
 hdiutil create \
-  -volname "Lofree Dongle Battery Dev" \
+  -volname "Lofree Dongle Battery Compatibility Debug" \
   -srcfolder "$STAGING_DIR" \
   -format UDZO \
   "$DMG_PATH"
