@@ -819,7 +819,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         if let percent = reading.percent {
-            menu.addItem(withTitle: "Battery: \(percent)%", action: nil, keyEquivalent: "")
+            let batteryTitle = reading.charging ? "Battery: \(percent)% - Charging" : "Battery: \(percent)%"
+            menu.addItem(withTitle: batteryTitle, action: nil, keyEquivalent: "")
         } else {
             menu.addItem(withTitle: "Battery: unavailable", action: nil, keyEquivalent: "")
         }
@@ -830,7 +831,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             menu.addItem(withTitle: "Voltage: unavailable", action: nil, keyEquivalent: "")
         }
-        menu.addItem(withTitle: "Charging: \(reading.charging ? "Yes" : "No")", action: nil, keyEquivalent: "")
         menu.addItem(withTitle: "Last updated: \(relativeUpdateText(since: reading.updatedAt))", action: nil, keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Check Mode: \(connectionMode.menuTitle)", action: nil, keyEquivalent: "")
