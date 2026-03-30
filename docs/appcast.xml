@@ -6,13 +6,13 @@
     <language>en</language>
     <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery</link>
     <item>
-      <title>Version 1.0.4</title>
-      <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.4.md</link>
-      <description><![CDATA[<h2>Lofree Dongle Battery 1.0.4</h2><ul><li>Adds Bluetooth battery support for already-connected keyboards.</li><li>Adds `Auto`, `Bluetooth only`, and `2.4 GHz only` check modes.</li><li>Shows connection type, status, and last updated time in the menu.</li><li>Moves `2.4 GHz` battery reading into the app process for a cleaner permission flow.</li></ul>]]></description>
-      <sparkle:version>5</sparkle:version>
-      <sparkle:shortVersionString>1.0.4</sparkle:shortVersionString>
-      <pubDate>Sun, 29 Mar 2026 16:04:19 +0000</pubDate>
-      <enclosure url="https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/v1.0.4/LofreeDongleBattery-1.0.4.dmg" length="2203497" type="application/octet-stream" sparkle:edSignature="F8GDKpoxf6GomUrZGxM0+jQrfI1hZuFW4aTAhr+E8oCIvsnhbho9mlko5CzjItLi4rcRiy81CuSDLbEjqdvqDg==" />
+      <title>Version 1.0.5</title>
+      <link>https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/blob/main/docs/release-notes/1.0.5.md</link>
+      <description><![CDATA[<h2>Lofree Dongle Battery 1.0.5</h2><ul><li>Adds a charging indicator to the menu bar icon when the keyboard is charging.</li><li>Shows charging directly in the battery row as `Battery: &lt;percent&gt;% - Charging`.</li><li>Keeps the public release focused on the normal app experience without compatibility-debug tools.</li></ul>]]></description>
+      <sparkle:version>6</sparkle:version>
+      <sparkle:shortVersionString>1.0.5</sparkle:shortVersionString>
+      <pubDate>Mon, 30 Mar 2026 16:02:51 +0000</pubDate>
+      <enclosure url="https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/download/v1.0.5/LofreeDongleBattery-1.0.5.dmg" length="2196563" type="application/octet-stream" sparkle:edSignature="uZWhSuAYthE363qL1mCUFjz0urBt+bvBTqxlOm7XOJ7R7eLAvvllM6DSyuDj5+52uh2jJh9DGX6DKX3solkTDg==" />
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
     </item>
   </channel>
