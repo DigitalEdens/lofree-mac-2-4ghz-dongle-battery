@@ -12,6 +12,7 @@ struct BatteryReading {
     let connectionText: String
     let requiresInputMonitoring: Bool
     let updatedAt: Date
+    let rawDebugText: String?
 }
 
 private func appDisplayName() -> String {
@@ -37,6 +38,72 @@ private func relativeUpdateText(since date: Date) -> String {
     }
     let hours = minutes / 60
     return "\(hours)h ago"
+}
+
+private func chargingKeyboardImage() -> NSImage? {
+    guard let keyboard = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Lofree battery"),
+          let bolt = NSImage(
+              systemSymbolName: "bolt.fill",
+              accessibilityDescription: "Charging"
+          ) else {
+        return nil
+    }
+
+    let size = keyboard.size
+    let composed = NSImage(size: size)
+    composed.lockFocus()
+    defer { composed.unlockFocus() }
+
+    keyboard.draw(in: NSRect(origin: .zero, size: size))
+
+    let boltSize = NSSize(width: size.width * 0.64, height: size.height * 0.64)
+    let boltRect = NSRect(
+        x: size.width - boltSize.width + 2.6,
+        y: size.height - boltSize.height + 0.8,
+        width: boltSize.width,
+        height: boltSize.height
+    )
+    bolt.draw(in: boltRect)
+
+    composed.isTemplate = true
+    return composed
+}
+
+private let windowsBatteryThresholdsMv = [
+    3050, 3420, 3480, 3540, 3600, 3660, 3720,
+    3760, 3800, 3840, 3880, 3920, 3940, 3960,
+    3980, 4000, 4020, 4040, 4060, 4080, 4110
+]
+
+private func windowsThresholdMappedLevel(for voltage: Int, charging: Bool) -> Int? {
+    guard voltage > 0 else { return nil }
+    guard let firstThreshold = windowsBatteryThresholdsMv.first,
+          let lastThreshold = windowsBatteryThresholdsMv.last else {
+        return nil
+    }
+
+    if voltage <= firstThreshold {
+        return 1
+    }
+    if voltage >= lastThreshold {
+        return charging ? 99 : 100
+    }
+
+    for index in 1..<windowsBatteryThresholdsMv.count {
+        let lower = windowsBatteryThresholdsMv[index - 1]
+        let upper = windowsBatteryThresholdsMv[index]
+        guard voltage <= upper else { continue }
+
+        let lowerPercent = (index - 1) * 5
+        let upperPercent = index * 5
+        let span = max(1, upper - lower)
+        let progress = Double(voltage - lower) / Double(span)
+        let estimate = Double(lowerPercent) + progress * Double(upperPercent - lowerPercent)
+        let rounded = Int(estimate.rounded())
+        return max(1, min(charging ? 99 : 100, rounded))
+    }
+
+    return charging ? 99 : 100
 }
 
 private func hexString(_ bytes: [UInt8]) -> String {
@@ -65,7 +132,7 @@ struct ReceiverCandidate {
     }
 
     var reportLines: [String] {
-        [
+        var lines = [
             "Product: \(product.isEmpty ? "unknown" : product)",
             "Manufacturer: \(manufacturer.isEmpty ? "unknown" : manufacturer)",
             String(format: "Vendor ID: 0x%04X", vendorID),
@@ -75,6 +142,42 @@ struct ReceiverCandidate {
             String(format: "Location ID: 0x%08X", locationID),
             "Selection identifier: \(identifier)"
         ]
+        if let familyTitle {
+            lines.append("Known family guess: \(familyTitle)")
+        }
+        return lines
+    }
+
+    var familyPriority: Int {
+        switch (vendorID, productID) {
+        case (0x05AC, 0x024F):
+            return 0
+        case (0x3554, 0xF811):
+            return 1
+        case (0x388D, 0x0008), (0x388D, 0x0009):
+            return 2
+        case (0x388D, _):
+            return 3
+        default:
+            return 10
+        }
+    }
+
+    var familyTitle: String? {
+        switch (vendorID, productID) {
+        case (0x05AC, 0x024F):
+            return "05AC:024F family"
+        case (0x3554, 0xF811):
+            return "3554:F811 family"
+        case (0x388D, 0x0008):
+            return "388D:0008 family"
+        case (0x388D, 0x0009):
+            return "388D:0009 family"
+        case (0x388D, _):
+            return String(format: "388D family candidate (PID 0x%04X)", productID)
+        default:
+            return nil
+        }
     }
 }
 
@@ -98,6 +201,11 @@ private enum ConnectionMode: String {
 final class DongleBatteryMonitor {
     struct CompatibilityReport {
         let text: String
+    }
+
+    private struct WindowsEstimateState {
+        let displayedLevel: Int
+        let updatedAt: Date
     }
 
     private struct ProbeStep {
@@ -130,6 +238,7 @@ final class DongleBatteryMonitor {
     private var isReading = false
     private var lastSuccessfulReading: BatteryReading?
     private var retryWorkItem: DispatchWorkItem?
+    private var windowsEstimateState: WindowsEstimateState?
 
     func refresh() {
         retryWorkItem?.cancel()
@@ -146,7 +255,8 @@ final class DongleBatteryMonitor {
                 stateText: "Requesting fresh battery data…",
                 connectionText: "2.4 GHz",
                 requiresInputMonitoring: false,
-                updatedAt: Date()
+                updatedAt: Date(),
+                rawDebugText: lastSuccessfulReading.rawDebugText
             ))
         } else {
             publish(BatteryReading(
@@ -156,7 +266,8 @@ final class DongleBatteryMonitor {
                 stateText: "Requesting battery data…",
                 connectionText: "2.4 GHz",
                 requiresInputMonitoring: false,
-                updatedAt: Date()
+                updatedAt: Date(),
+                rawDebugText: nil
             ))
         }
 
@@ -197,7 +308,8 @@ final class DongleBatteryMonitor {
                 stateText: "2.4 GHz receiver not found",
                 connectionText: "2.4 GHz",
                 requiresInputMonitoring: false,
-                updatedAt: Date()
+                updatedAt: Date(),
+                rawDebugText: nil
             ))
         case .inputMonitoringRequired:
             publish(BatteryReading(
@@ -207,7 +319,8 @@ final class DongleBatteryMonitor {
                 stateText: "Allow Input Monitoring",
                 connectionText: "2.4 GHz",
                 requiresInputMonitoring: true,
-                updatedAt: Date()
+                updatedAt: Date(),
+                rawDebugText: nil
             ))
         case .timedOut:
             publish(BatteryReading(
@@ -217,7 +330,8 @@ final class DongleBatteryMonitor {
                 stateText: "2.4 GHz retrying…",
                 connectionText: "2.4 GHz",
                 requiresInputMonitoring: false,
-                updatedAt: Date()
+                updatedAt: Date(),
+                rawDebugText: lastSuccessfulReading?.rawDebugText
             ))
             scheduleRetry()
         }
@@ -232,6 +346,41 @@ final class DongleBatteryMonitor {
         queue.async { [weak self] in
             guard let self else { return }
             let report = self.generateCompatibilityReport(metadata: metadata)
+            DispatchQueue.main.async {
+                completion(report)
+            }
+        }
+    }
+
+    func buildAdaptiveDebugReport(metadata: [String], completion: @escaping (CompatibilityReport) -> Void) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let baseReport = self.generateCompatibilityReport(metadata: metadata)
+            let shouldIncludeProtocolSection =
+                baseReport.text.contains("Result: No matching 2.4 GHz receiver found") ||
+                baseReport.text.contains("- Battery decode succeeded: no") ||
+                baseReport.text.contains("- Expected battery packet family observed: no")
+
+            let report: CompatibilityReport
+            if shouldIncludeProtocolSection {
+                let enrichedMetadata = metadata + [
+                    "Automatic extra section: included because the basic compatibility pass was inconclusive."
+                ]
+                let protocolReport = self.generateProtocolExplorerReport(metadata: enrichedMetadata)
+                let mergedText = [
+                    baseReport.text,
+                    "",
+                    String(repeating: "=", count: 50),
+                    "Automatic Protocol Explorer Section",
+                    String(repeating: "=", count: 50),
+                    "",
+                    protocolReport.text
+                ].joined(separator: "\n")
+                report = CompatibilityReport(text: mergedText)
+            } else {
+                report = baseReport
+            }
+
             DispatchQueue.main.async {
                 completion(report)
             }
@@ -593,6 +742,10 @@ final class DongleBatteryMonitor {
     private func isLikelyReceiverCandidate(_ candidate: ReceiverCandidate) -> Bool {
         let product = candidate.product.lowercased()
         let manufacturer = candidate.manufacturer.lowercased()
+        let excludedTerms = ["dictation", "headset", "microphone", "trackpad", "mouse", "keyboard", "touch id", "magic"]
+        if excludedTerms.contains(where: { product.contains($0) || manufacturer.contains($0) }) {
+            return false
+        }
         if product.contains("receiver") || product.contains("dongle") || product.contains("lofree") || product.contains("flow") {
             return true
         }
@@ -602,17 +755,30 @@ final class DongleBatteryMonitor {
         if candidate.vendorID == 0x05ac && candidate.productID == 0x024f {
             return true
         }
-        if candidate.usagePage == 0x0c && candidate.usage == 0x01 {
+        if candidate.vendorID == 0x3554 && candidate.productID == 0xf811 {
+            return true
+        }
+        if candidate.vendorID == 0x388d {
             return true
         }
         return false
     }
 
     func receiverCandidates() -> [ReceiverCandidate] {
-        allHIDDevices()
+        let filtered = allHIDDevices()
             .map(candidate(for:))
             .filter(isLikelyReceiverCandidate)
+
+        var seen = Set<String>()
+        return filtered
+            .filter { candidate in
+                let key = String(format: "%04X:%04X:%08X", candidate.vendorID, candidate.productID, candidate.locationID)
+                guard !seen.contains(key) else { return false }
+                seen.insert(key)
+                return true
+            }
             .sorted { lhs, rhs in
+                if lhs.familyPriority != rhs.familyPriority { return lhs.familyPriority < rhs.familyPriority }
                 if lhs.product != rhs.product { return lhs.product < rhs.product }
                 if lhs.vendorID != rhs.vendorID { return lhs.vendorID < rhs.vendorID }
                 if lhs.productID != rhs.productID { return lhs.productID < rhs.productID }
@@ -629,18 +795,17 @@ final class DongleBatteryMonitor {
             }
         }
 
-        return devices.first(where: {
-            let candidate = candidate(for: $0)
-            let product = candidate.product
-            let vendorID = candidate.vendorID
-            let productID = candidate.productID
-            let usagePage = candidate.usagePage
-            let usage = candidate.usage
-            return (product.localizedCaseInsensitiveContains("2.4G Wireless Receiver")
-                || (vendorID == 0x05ac && productID == 0x024f))
-                && usagePage == 0x0c
-                && usage == 0x01
-        })
+        let candidatesByIdentifier = Dictionary(uniqueKeysWithValues: receiverCandidates().map { ($0.identifier, $0) })
+        let matchingDevices = devices.filter { device in
+            candidatesByIdentifier[candidate(for: device).identifier] != nil
+        }
+
+        return matchingDevices.sorted { lhs, rhs in
+            let left = candidatesByIdentifier[candidate(for: lhs).identifier] ?? candidate(for: lhs)
+            let right = candidatesByIdentifier[candidate(for: rhs).identifier] ?? candidate(for: rhs)
+            if left.familyPriority != right.familyPriority { return left.familyPriority < right.familyPriority }
+            return left.identifier < right.identifier
+        }.first
     }
 
     private func checksum(_ bytes: [UInt8]) -> UInt8 {
@@ -724,6 +889,41 @@ final class DongleBatteryMonitor {
         max(0, Int(deadline.timeIntervalSinceNow * 1000))
     }
 
+    private func experimentalWindowsLevel(mappedLevel: Int, baseLevel: Int, charging: Bool, now: Date) -> Int {
+        guard let previous = windowsEstimateState else {
+            let seededLevel = max(0, min(charging ? 99 : 100, baseLevel))
+            windowsEstimateState = WindowsEstimateState(displayedLevel: seededLevel, updatedAt: now)
+            return seededLevel
+        }
+
+        let elapsedSeconds = max(0.0, now.timeIntervalSince(previous.updatedAt))
+        var level = previous.displayedLevel
+
+        // Global timing/rate-limit gate from the DLL's optimize layer.
+        if elapsedSeconds < 10 {
+            return level
+        }
+        if charging, previous.displayedLevel >= 95, mappedLevel > previous.displayedLevel, elapsedSeconds < 300 {
+            return level
+        }
+
+        // Object-local smoothing/clamping stage.
+        if elapsedSeconds < 60 {
+            level = previous.displayedLevel
+        } else if elapsedSeconds > 1800 {
+            level = mappedLevel
+        } else if mappedLevel > previous.displayedLevel {
+            let allowedRise = max(1, Int(floor(elapsedSeconds * 0.028)))
+            level = min(mappedLevel, previous.displayedLevel + allowedRise)
+        } else if mappedLevel < previous.displayedLevel {
+            let allowedDrop = max(1, Int(floor(elapsedSeconds * 0.014)))
+            level = max(mappedLevel, previous.displayedLevel - allowedDrop)
+        }
+
+        windowsEstimateState = WindowsEstimateState(displayedLevel: level, updatedAt: now)
+        return level
+    }
+
     @discardableResult
     private func sendUntilDeadline(_ device: IOHIDDevice, _ packet: [UInt8], waitMs: Int, deadline: Date) -> Bool {
         guard timeRemainingMs(until: deadline) > 0 else { return false }
@@ -731,22 +931,41 @@ final class DongleBatteryMonitor {
         return timeRemainingMs(until: deadline) > 0
     }
 
+    private func normalizedDongleReading(level: Int, chargingFlag: UInt8, voltage: Int) -> BatteryReading {
+        let charging = chargingFlag == 1
+        let now = Date()
+        let thresholdEstimate = windowsThresholdMappedLevel(for: voltage, charging: charging)
+        let smoothedEstimate = thresholdEstimate.map {
+            experimentalWindowsLevel(mappedLevel: $0, baseLevel: level, charging: charging, now: now)
+        }
+        let debugText: String
+        if let thresholdEstimate, let smoothedEstimate {
+            debugText = "Windows-style estimate: \(smoothedEstimate)% (mapped \(thresholdEstimate)% from \(voltage) mV, raw level \(level)%)"
+        } else if let thresholdEstimate {
+            debugText = "Windows-style estimate: mapped \(thresholdEstimate)% from \(voltage) mV (raw level \(level)%)"
+        } else {
+            debugText = "Windows-style estimate: unavailable (raw level \(level)%, voltage \(voltage) mV)"
+        }
+        return BatteryReading(
+            percent: level,
+            charging: charging,
+            voltage: voltage,
+            stateText: charging ? "2.4 GHz charging" : "2.4 GHz connected",
+            connectionText: "2.4 GHz",
+            requiresInputMonitoring: false,
+            updatedAt: now,
+            rawDebugText: debugText
+        )
+    }
+
     private func extractBattery(from messages: [[UInt8]]) -> BatteryReading? {
         for message in messages {
             guard message.count >= 11 else { continue }
             guard message[0] == 0x08, message[1] == 0x08, message[2] == 0x04 else { continue }
-            let percent = Int(message[7])
-            let charging = message[8] == 1
+            let level = Int(message[7])
+            let chargingFlag = message[8]
             let voltage = (Int(message[9]) << 8) | Int(message[10])
-            return BatteryReading(
-                percent: percent,
-                charging: charging,
-                voltage: voltage,
-                stateText: charging ? "2.4 GHz charging" : "2.4 GHz connected",
-                connectionText: "2.4 GHz",
-                requiresInputMonitoring: false,
-                updatedAt: Date()
-            )
+            return normalizedDongleReading(level: level, chargingFlag: chargingFlag, voltage: voltage)
         }
         return nil
     }
@@ -968,7 +1187,8 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
                 stateText: bluetoothUnavailableText(for: centralManager.state),
                 connectionText: "Bluetooth",
                 requiresInputMonitoring: false,
-                updatedAt: Date()
+                updatedAt: Date(),
+                rawDebugText: nil
             ))
             return
         }
@@ -982,7 +1202,8 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
                     stateText: "Requesting fresh battery data…",
                     connectionText: "Bluetooth",
                     requiresInputMonitoring: false,
-                    updatedAt: Date()
+                    updatedAt: Date(),
+                    rawDebugText: nil
                 ))
             } else {
                 publish(BatteryReading(
@@ -992,7 +1213,8 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
                     stateText: "Requesting battery data…",
                     connectionText: "Bluetooth",
                     requiresInputMonitoring: false,
-                    updatedAt: Date()
+                    updatedAt: Date(),
+                    rawDebugText: nil
                 ))
             }
             peripheral.readValue(for: batteryCharacteristic)
@@ -1012,7 +1234,8 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
                 stateText: lastSuccessfulReading == nil ? "Requesting battery data…" : "Requesting fresh battery data…",
                 connectionText: "Bluetooth",
                 requiresInputMonitoring: false,
-                updatedAt: Date()
+                updatedAt: Date(),
+                rawDebugText: nil
             ))
             adopt(peripheral: matched, using: centralManager)
             return
@@ -1027,7 +1250,8 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
             stateText: lastSuccessfulReading == nil ? "Bluetooth not connected" : "Bluetooth reconnecting…",
             connectionText: "Bluetooth",
             requiresInputMonitoring: false,
-            updatedAt: Date()
+            updatedAt: Date(),
+            rawDebugText: nil
         ))
     }
 
@@ -1092,7 +1316,8 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
             stateText: "Bluetooth disconnected",
             connectionText: "Bluetooth",
             requiresInputMonitoring: false,
-            updatedAt: Date()
+            updatedAt: Date(),
+            rawDebugText: nil
         ))
     }
 
@@ -1125,7 +1350,8 @@ final class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPerip
             stateText: "Bluetooth connected",
             connectionText: "Bluetooth",
             requiresInputMonitoring: false,
-            updatedAt: Date()
+            updatedAt: Date(),
+            rawDebugText: nil
         )
         lastSuccessfulReading = reading
         publish(reading)
@@ -1147,8 +1373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private enum Compatibility {
-        static let reportTitle = "Export 2.4 GHz Compatibility Report…"
-        static let explorerTitle = "Export 2.4 GHz Protocol Explorer…"
+        static let reportTitle = "Export 2.4 GHz Debug Report…"
     }
 
     private enum DefaultsKey {
@@ -1171,7 +1396,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stateText: "Starting…",
         connectionText: "2.4 GHz",
         requiresInputMonitoring: false,
-        updatedAt: Date()
+        updatedAt: Date(),
+        rawDebugText: nil
     )
     private var timer: Timer?
     private var hasShownPermissionAlert = false
@@ -1319,11 +1545,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         button.imagePosition = .imageTrailing
         button.imageHugsTitle = true
+        updateStatusItemImage()
+    }
 
-        if let image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Lofree battery") {
-            image.isTemplate = true
-            button.image = image
+    private func updateStatusItemImage() {
+        guard let button = statusItem.button else { return }
+        let image: NSImage?
+        if reading.charging {
+            image = chargingKeyboardImage()
+        } else {
+            image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Lofree battery")
         }
+        image?.isTemplate = true
+        button.image = image
     }
 
     private func updateUI() {
@@ -1340,10 +1574,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             string: titleText,
             attributes: [.font: StatusStyle.font]
         )
+        updateStatusItemImage()
 
         let menu = NSMenu()
         if let percent = reading.percent {
-            menu.addItem(withTitle: "Battery: \(percent)%", action: nil, keyEquivalent: "")
+            let batteryTitle = reading.charging ? "Battery: \(percent)% - Charging" : "Battery: \(percent)%"
+            menu.addItem(withTitle: batteryTitle, action: nil, keyEquivalent: "")
         } else {
             menu.addItem(withTitle: "Battery: unavailable", action: nil, keyEquivalent: "")
         }
@@ -1355,6 +1591,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(withTitle: "Voltage: unavailable", action: nil, keyEquivalent: "")
         }
         menu.addItem(withTitle: "Last updated: \(relativeUpdateText(since: reading.updatedAt))", action: nil, keyEquivalent: "")
+        if let rawDebugText = reading.rawDebugText {
+            menu.addItem(withTitle: rawDebugText, action: nil, keyEquivalent: "")
+        }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Check Mode: \(connectionMode.menuTitle)", action: nil, keyEquivalent: "")
         let selectedReceiverTitle = selectedReceiverDisplayName()
@@ -1385,8 +1624,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(dongleModeItem)
 
         menu.addItem(.separator())
+        let automaticReceiverItem = NSMenuItem(title: "Use automatic receiver detection", action: #selector(setReceiverSelection(_:)), keyEquivalent: "")
+        automaticReceiverItem.target = self
+        automaticReceiverItem.representedObject = ""
+        automaticReceiverItem.state = selectedReceiverIdentifier == nil ? .on : .off
+        menu.addItem(automaticReceiverItem)
+
         for candidate in availableReceivers {
-            let item = NSMenuItem(title: candidate.menuTitle, action: #selector(setReceiverSelection(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: "Use \(candidate.menuTitle)", action: #selector(setReceiverSelection(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = candidate.identifier
             item.state = candidate.identifier == selectedReceiverIdentifier ? .on : .off
@@ -1418,21 +1663,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.addItem(settingsItem)
 
-        let reportItem = NSMenuItem(title: Compatibility.reportTitle, action: #selector(exportCompatibilityReport), keyEquivalent: "")
+        let reportItem = NSMenuItem(title: Compatibility.reportTitle, action: #selector(exportDebugReport), keyEquivalent: "")
         reportItem.target = self
         if let image = NSImage(systemSymbolName: "doc.text.magnifyingglass", accessibilityDescription: Compatibility.reportTitle) {
             image.isTemplate = true
             reportItem.image = image
         }
         menu.addItem(reportItem)
-
-        let explorerItem = NSMenuItem(title: Compatibility.explorerTitle, action: #selector(exportProtocolExplorerReport), keyEquivalent: "")
-        explorerItem.target = self
-        if let image = NSImage(systemSymbolName: "waveform.path.ecg.rectangle", accessibilityDescription: Compatibility.explorerTitle) {
-            image.isTemplate = true
-            explorerItem.image = image
-        }
-        menu.addItem(explorerItem)
         menu.addItem(.separator())
 
         let supportItem = NSMenuItem(title: Support.menuTitle, action: #selector(openSupportLink), keyEquivalent: "")
@@ -1506,10 +1743,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshForCurrentMode()
     }
 
-    @objc private func exportCompatibilityReport() {
+    @objc private func exportDebugReport() {
         let panel = NSSavePanel()
-        panel.title = "Export 2.4 GHz Compatibility Report"
-        panel.nameFieldStringValue = "Lofree-2.4GHz-Compatibility-\(exportTimestamp()).txt"
+        panel.title = "Export 2.4 GHz Debug Report"
+        panel.nameFieldStringValue = "Lofree-2.4GHz-Debug-\(exportTimestamp()).txt"
         panel.allowedContentTypes = [.plainText]
         panel.canCreateDirectories = true
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
@@ -1527,55 +1764,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Input Monitoring currently required by app: \(reading.requiresInputMonitoring ? "yes" : "no")"
         ]
 
-        dongleMonitor.buildCompatibilityReport(metadata: metadata) { [weak self] report in
+        dongleMonitor.buildAdaptiveDebugReport(metadata: metadata) { [weak self] report in
             do {
                 try report.text.write(to: url, atomically: true, encoding: .utf8)
                 let alert = NSAlert()
-                alert.messageText = "Compatibility Report Saved"
-                alert.informativeText = "Saved the 2.4 GHz compatibility report to:\n\n\(url.path)\n\nYou can send this file to help me add support for other Lofree models."
-                alert.addButton(withTitle: "OK")
-                alert.addButton(withTitle: "Reveal in Finder")
-                let response = alert.runModal()
-                if response == .alertSecondButtonReturn {
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
-                }
-            } catch {
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = "Could Not Save Report"
-                alert.informativeText = error.localizedDescription
-                alert.runModal()
-            }
-            self?.refreshDisplayedReading()
-        }
-    }
-
-    @objc private func exportProtocolExplorerReport() {
-        let panel = NSSavePanel()
-        panel.title = "Export 2.4 GHz Protocol Explorer Report"
-        panel.nameFieldStringValue = "Lofree-2.4GHz-Protocol-Explorer-\(exportTimestamp()).txt"
-        panel.allowedContentTypes = [.plainText]
-        panel.canCreateDirectories = true
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        let metadata = [
-            "Trigger: Manual protocol explorer export",
-            "Current check mode: \(connectionMode.menuTitle)",
-            "Selected 2.4 GHz receiver: \(selectedReceiverDisplayName())",
-            "Current connection type shown in app: \(reading.connectionText)",
-            "Current status shown in app: \(reading.stateText)",
-            "Current battery shown in app: \(reading.percent.map { "\($0)%" } ?? "unavailable")",
-            "Current voltage shown in app: \(reading.voltage.map { "\($0) mV" } ?? (reading.connectionText == "Bluetooth" ? "unavailable on Bluetooth" : "unavailable"))"
-        ]
-
-        dongleMonitor.buildProtocolExplorerReport(metadata: metadata) { [weak self] report in
-            do {
-                try report.text.write(to: url, atomically: true, encoding: .utf8)
-                let alert = NSAlert()
-                alert.messageText = "Protocol Explorer Report Saved"
-                alert.informativeText = "Saved the 2.4 GHz protocol explorer report to:\n\n\(url.path)\n\nYou can send this file to help me figure out the protocol for unsupported Lofree receivers."
+                alert.messageText = "Debug Report Saved"
+                alert.informativeText = "Saved the 2.4 GHz debug report to:\n\n\(url.path)\n\nIt includes the basic compatibility details and automatically adds deeper protocol probing when the first pass is not enough."
                 alert.addButton(withTitle: "OK")
                 alert.addButton(withTitle: "Reveal in Finder")
                 let response = alert.runModal()
@@ -1656,7 +1850,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func selectedReceiverDisplayName() -> String {
         guard let selectedReceiverIdentifier, !selectedReceiverIdentifier.isEmpty else {
-            return "Auto detect"
+            return "Automatic"
         }
         if let candidate = availableReceivers.first(where: { $0.identifier == selectedReceiverIdentifier }) {
             return candidate.menuTitle
