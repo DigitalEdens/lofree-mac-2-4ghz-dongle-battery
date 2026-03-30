@@ -18,7 +18,7 @@ This app talks to the Lofree USB dongle when you are using `2.4 GHz`, or reads t
 
 [Download the latest release](https://github.com/DigitalEdens/lofree-mac-2-4ghz-dongle-battery/releases/latest)
 
-Download the versioned DMG from the latest GitHub release, for example `LofreeDongleBattery-1.0.4.dmg`.
+Download the versioned DMG from the latest GitHub release, for example `LofreeDongleBattery-1.0.5.dmg`.
 
 ## What the app shows
 
