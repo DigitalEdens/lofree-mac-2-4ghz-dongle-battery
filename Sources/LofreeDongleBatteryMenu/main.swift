@@ -39,6 +39,35 @@ private func relativeUpdateText(since date: Date) -> String {
     return "\(hours)h ago"
 }
 
+private func chargingKeyboardImage() -> NSImage? {
+    guard let keyboard = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Lofree battery"),
+          let bolt = NSImage(
+              systemSymbolName: "bolt.fill",
+              accessibilityDescription: "Charging"
+          ) else {
+        return nil
+    }
+
+    let size = keyboard.size
+    let composed = NSImage(size: size)
+    composed.lockFocus()
+    defer { composed.unlockFocus() }
+
+    keyboard.draw(in: NSRect(origin: .zero, size: size))
+
+    let boltSize = NSSize(width: size.width * 0.64, height: size.height * 0.64)
+    let boltRect = NSRect(
+        x: size.width - boltSize.width + 2.6,
+        y: size.height - boltSize.height + 0.8,
+        width: boltSize.width,
+        height: boltSize.height
+    )
+    bolt.draw(in: boltRect)
+
+    composed.isTemplate = true
+    return composed
+}
+
 private enum ConnectionMode: String {
     case auto
     case bluetoothOnly
@@ -757,11 +786,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         button.imagePosition = .imageTrailing
         button.imageHugsTitle = true
+        updateStatusItemImage()
+    }
 
-        if let image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Lofree battery") {
-            image.isTemplate = true
-            button.image = image
+    private func updateStatusItemImage() {
+        guard let button = statusItem.button else { return }
+        let image: NSImage?
+        if reading.charging {
+            image = chargingKeyboardImage()
+        } else {
+            image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Lofree battery")
         }
+        image?.isTemplate = true
+        button.image = image
     }
 
     private func updateUI() {
@@ -778,6 +815,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             string: titleText,
             attributes: [.font: StatusStyle.font]
         )
+        updateStatusItemImage()
 
         let menu = NSMenu()
         if let percent = reading.percent {
@@ -792,6 +830,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             menu.addItem(withTitle: "Voltage: unavailable", action: nil, keyEquivalent: "")
         }
+        menu.addItem(withTitle: "Charging: \(reading.charging ? "Yes" : "No")", action: nil, keyEquivalent: "")
         menu.addItem(withTitle: "Last updated: \(relativeUpdateText(since: reading.updatedAt))", action: nil, keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Check Mode: \(connectionMode.menuTitle)", action: nil, keyEquivalent: "")
